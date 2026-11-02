@@ -1,0 +1,32 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: clearaid
+    runtime: node
+    plan: starter # persistent disks need a paid instance; use "free" without the disk for a throwaway demo
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/config
+    disk:
+      name: clearaid-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ZAPIER_WEBHOOK_URL
+        sync: false
+      - key: APP_URL
+        sync: false

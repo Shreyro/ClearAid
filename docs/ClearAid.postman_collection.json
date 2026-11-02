@@ -1,0 +1,800 @@
+{
+  "info": {
+    "name": "ClearAid API",
+    "description": "Transparent disaster relief on PayPal. Run against a local dev server or your Render URL. Postman keeps cookies per domain, so call an 'Act as' request before role-gated endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "fundId",
+      "value": "fund_asha"
+    },
+    {
+      "key": "withdrawalId",
+      "value": "wd_xxx"
+    },
+    {
+      "key": "orderId",
+      "value": "SIM-ORDER-xxx"
+    }
+  ],
+  "item": [
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "Config (PayPal/AI mode)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "config"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List funds",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hash-chained ledger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}/ledger",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}",
+                "ledger"
+              ]
+            },
+            "description": "Full ledger plus server-side verification. Recompute sha256(seq|fundId|ts|type|amount|memo|actor|ref|paypalRef|prevHash) to verify independently."
+          }
+        },
+        {
+          "name": "Crisis insights",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}/insights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}",
+                "insights"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Regenerate insights",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}/insights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}",
+                "insights"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ask ClearAid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}/ask",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}",
+                "ask"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Were any withdrawal requests rejected? Why?\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Withdrawal (public view)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals/{{withdrawalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals",
+                "{{withdrawalId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Live events (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stream?fund={{fundId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "stream"
+              ],
+              "query": [
+                {
+                  "key": "fund",
+                  "value": "{{fundId}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Donations (PayPal Orders v2)",
+      "item": [
+        {
+          "name": "Create order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fundId\": \"{{fundId}}\",\n  \"amountUsd\": 25,\n  \"name\": \"Postman Donor\",\n  \"email\": \"postman@example.com\",\n  \"showName\": true\n}"
+            },
+            "description": "Returns the PayPal order id used by the JS SDK v6 payment session."
+          }
+        },
+        {
+          "name": "Capture order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/orders/{{orderId}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "orders",
+                "{{orderId}}",
+                "capture"
+              ]
+            },
+            "description": "Captures, records the donation on the ledger and signs the donor in."
+          }
+        },
+        {
+          "name": "PayPal webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "webhook"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"WH-EXAMPLE\",\n  \"event_type\": \"PAYMENT.CAPTURE.REFUNDED\",\n  \"resource\": {}\n}"
+            },
+            "description": "Requires valid PayPal transmission headers and PAYPAL_WEBHOOK_ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Donor",
+      "item": [
+        {
+          "name": "Act as donor (dnr_maya)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "session"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"donor\",\n  \"id\": \"dnr_maya\"\n}"
+            },
+            "description": "Demo identity: sets the persona cookie used by role-gated endpoints."
+          }
+        },
+        {
+          "name": "My impact",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Leftover election",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/me/election",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "election"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fundId\": \"fund_mahanadi\",\n  \"choice\": \"carry_forward\",\n  \"targetFundId\": \"fund_monsoon\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vendor",
+      "item": [
+        {
+          "name": "Act as vendor (vnd_aquapure)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "session"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"vendor\",\n  \"id\": \"vnd_aquapure\"\n}"
+            },
+            "description": "Demo identity: sets the persona cookie used by role-gated endpoints."
+          }
+        },
+        {
+          "name": "My requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Submit withdrawal (multipart)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fundId",
+                  "value": "{{fundId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "needId",
+                  "value": "n_water",
+                  "type": "text"
+                },
+                {
+                  "key": "category",
+                  "value": "water",
+                  "type": "text"
+                },
+                {
+                  "key": "amountUsd",
+                  "value": "600",
+                  "type": "text"
+                },
+                {
+                  "key": "quantity",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "beneficiaries",
+                  "value": "800",
+                  "type": "text"
+                },
+                {
+                  "key": "location",
+                  "value": "Arjyapalli camp",
+                  "type": "text"
+                },
+                {
+                  "key": "purpose",
+                  "value": "1,000 jerrycans delivered to Arjyapalli camp",
+                  "type": "text"
+                },
+                {
+                  "key": "receipts",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "photos",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "photoMeta",
+                  "value": "[]",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Receipt (JPG/PNG/WebP/PDF) and photos (JPG/PNG/WebP), each up to 8 MB. Redaction and AI audit run in the background."
+          }
+        }
+      ]
+    },
+    {
+      "name": "NGO",
+      "item": [
+        {
+          "name": "Act as ngo (adm_priya)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "session"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ngo\",\n  \"id\": \"adm_priya\"\n}"
+            },
+            "description": "Demo identity: sets the persona cookie used by role-gated endpoints."
+          }
+        },
+        {
+          "name": "Review queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals?status=pending_approval,auditing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending_approval,auditing"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve / reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals/{{withdrawalId}}/decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals",
+                "{{withdrawalId}}",
+                "decision"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\",\n  \"note\": \"\"\n}"
+            },
+            "description": "Second signature required at or above the fund's dual-approval threshold. Final approval sends a PayPal Payout."
+          }
+        },
+        {
+          "name": "Re-run AI audit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals/{{withdrawalId}}/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals",
+                "{{withdrawalId}}",
+                "audit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "AI fund draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "draft"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brief\": \"Flash floods in Sylhet, 4,000 families in school shelters, wells contaminated.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create fund",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Sylhet Flood Relief\",\n  \"disaster\": \"Sylhet floods\",\n  \"region\": \"Sylhet, Bangladesh\",\n  \"description\": \"Food, water and shelter for displaced families.\",\n  \"goalUsd\": 30000,\n  \"needs\": [\n    {\n      \"item\": \"Food ration\",\n      \"category\": \"food\",\n      \"unit\": \"rations\",\n      \"targetQty\": 1000,\n      \"unitCostUsd\": 15\n    }\n  ],\n  \"categoryCaps\": {\n    \"food\": 40,\n    \"admin\": 8\n  },\n  \"dualApprovalUsd\": 2500,\n  \"maxSingleUsd\": 6000,\n  \"fastLaneUsd\": 500,\n  \"leftoverDefault\": \"refund\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Start closing fund",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}",
+                "close"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"start\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Finalise closure (refunds + carry-forward)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{fundId}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{fundId}}",
+                "close"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"finalize\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Vendors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "vendors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify vendor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "vendors"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verifyId\": \"vnd_quicksupply\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Copilot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Reconcile the last 31 days of donations against PayPal\"\n}"
+            },
+            "description": "Continue with {conversationId, confirm: true|false} to approve or decline a pending money-moving action."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Demo",
+      "item": [
+        {
+          "name": "Reset demo data",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reset"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
