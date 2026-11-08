@@ -1,21 +1,20 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
 services:
+  # API: the backend Docker image
   - type: web
-    name: clearaid
-    runtime: node
+    name: clearaid-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
     plan: starter # persistent disks need a paid instance; use "free" without the disk for a throwaway demo
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
-    healthCheckPath: /api/config
+    healthCheckPath: /healthz
     disk:
       name: clearaid-data
-      mountPath: /var/data
+      mountPath: /data
       sizeGB: 1
     envVars:
-      - key: NODE_VERSION
-        value: "22"
       - key: DATA_DIR
-        value: /var/data
+        value: /data
       - key: PAYPAL_ENV
         value: sandbox
       - key: PAYPAL_CLIENT_ID
@@ -28,5 +27,19 @@ services:
         sync: false
       - key: ZAPIER_WEBHOOK_URL
         sync: false
-      - key: APP_URL
+      - key: APP_URL # the clearaid-web URL (PayPal return URLs, links in outbound webhooks)
+        sync: false
+
+  # UI: Next.js, proxies /api/* to the API
+  - type: web
+    name: clearaid-web
+    runtime: node
+    rootDir: frontend
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: BACKEND_URL # the clearaid-api URL, e.g. https://clearaid-api.onrender.com (needed at build time)
         sync: false

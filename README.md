@@ -1,43 +1,32 @@
-# ClearAid: transparent disaster relief on PayPal
+# ClearAid: financial controls for relief NGOs on PayPal
 
-**Every relief dollar, accounted for.** ClearAid gives NGOs dedicated disaster-relief funds on PayPal. Money can only leave a fund as a documented, AI-audited, human-approved PayPal payout to a verified vendor, and every movement is published on a public, hash-chained ledger. Donors can see who withdrew money, how much, and what it bought, down to their own share of each delivery. When the crisis ends, each donor chooses whether their unspent share is refunded or carried forward to another fund.
+**Every relief dollar, accounted for.** ClearAid is a governance, risk and compliance (GRC) platform for NGOs running disaster-relief funds on PayPal. Staff see every dollar in and out on a tamper-evident ledger, payouts are AI-audited and need human sign-off from assigned approvers, and every action lands in a hash-chained audit log. It is an internal tool: only NGO staff sign in.
 
 > Built for the PayPal AI Hackathon. The demo scenario (Cyclone Asha, Coastal Relief Collective and the rest) is fictional.
 
 ## Why it matters
 
-Donors give less after disasters when they can't see where money goes, and NGOs spend a lot of staff time on reporting. ClearAid turns transparency from a quarterly PDF into a property of the payment system itself:
+Relief NGOs move money fast under pressure, and auditors, boards and grant makers later ask who approved what, on what evidence. ClearAid makes those controls part of the payment system:
 
-| Problem | ClearAid |
+| Risk | Control in ClearAid |
 |---|---|
-| "Did my money reach people?" | Follow-your-dollar: every payout is charged pro-rata to the donors whose money was in the fund at that moment, e.g. *"your $100 delivered ~1.8 food rations and ~21 jerrycans of water"* |
 | Fake or inflated invoices | Claude reads every receipt and checks it against the request. Rule checks catch reused receipts, reused photos (perceptual hash), photos taken before the crisis or far from it, over-priced units and budget breaches |
-| Beneficiary privacy | AI + regex PII redaction before anything is published; photos with identifiable people stay private |
-| Leftover money | Pro-rata partial refunds through PayPal, or carry-forward to another fund, as each donor chooses |
-| "Can I trust the dashboard?" | A SHA-256 hash-chained ledger that anyone can re-verify in their own browser with WebCrypto |
+| One person moving money alone | Only people assigned to a fund can sign; large payouts need two different assigned approvers. Funds with fewer than two approvers are flagged |
+| Unverified payees | Payouts go only to vendors an admin has verified (KYB) |
+| Altered records | Each fund's ledger and the NGO-wide audit log are SHA-256 hash chains, re-verifiable in the browser |
+| Beneficiary privacy | AI + regex PII redaction on request text; photos with identifiable people stay restricted |
 
 ## Features
 
-**For donors**
-- PayPal JavaScript SDK v6 checkout (Orders v2, item category `DONATION`), anonymous by default
-- Live fund page: money in vs out, spend by category against policy caps, needs progress, transparency score, live activity (server-sent events)
-- **Crisis insights**: Claude writes a plain-language briefing from the ledger (what was achieved, what's still needed, integrity notes, runway)
-- **Ask ClearAid**: a Claude agent with read-only tools over the public, redacted records ("Were any requests rejected? Why?")
-- **My impact**: your exact share of every vendor payout, units delivered, and the refund / carry-forward choice when a fund closes
-- Public AG Grid ledger with in-browser hash-chain verification and raw JSON export
-
-**For vendors**
-- Mobile-friendly request form: receipt plus delivery photos (camera capture), with capture time and GPS read from EXIF in the browser
-- Client-side perceptual hash (dHash) and downscaling before upload
-- "Generate sample receipt" and "Add synthetic test photo" buttons for demos; the AI should flag the synthetic photo
-
-**For NGOs**
-- Review queue with the AI audit summary, failed checks and signature count
-- **Dual approval** above a threshold; approval triggers a **PayPal Payouts** batch to the vendor
-- **AI fast lane**: clean, low-risk requests under a limit are paid without waiting (configurable per fund)
-- **AI fund setup**: describe the crisis and Claude drafts needs, unit costs and spending caps for review
-- Fund closure: start closing, then finalise, which issues pro-rata **partial capture refunds** and records carry-forwards
-- **ClearAid Copilot**: Claude with ClearAid tools plus the official **PayPal Agent Toolkit** (`list_transactions`, `create_refund`, disputes, invoices, insights) and ledger-vs-PayPal reconciliation. Money-moving actions pause for human confirmation, and refunds are capped at the donor's unspent share.
+- **Overview**: cash position across funds, requests waiting for your signature, control status (dual-approval coverage, segregation of duties, ledger and audit-chain integrity, payee verification, evidence coverage, overhead caps, review timeliness), open risks, cash-flow chart and recent activity
+- **Approvals**: review queue with the AI audit summary, failed checks and signatures; approval triggers a **PayPal Payouts** batch. **AI fast lane** pays clean, low-risk requests under a per-fund limit
+- **Transactions**: every money movement across your funds (PayPal donations, staff-recorded bank transfers / cheques / grants, payouts, refunds, carry-forwards) with filters and CSV export. Staff can **record incoming money** received outside PayPal
+- **Bank accounts**: add accounts for **CSV statement upload** (columns auto-detected, mapping remembered, duplicate files and rows skipped) or connect a bank with **Plaid** (Link + `/transactions/sync`; a simulated bank feed when no Plaid keys are set)
+- **Tracking codes & Bank tagging**: each fund has one or more codes (e.g. `#RO1`, `#ASHA`); a bank line whose description carries one is tagged to that fund and posted to its ledger, optionally with a budget category (`#RO1-MED`). Lines with no code, an unknown code or codes for two funds wait in the **Bank tagging** queue, where staff tag, split, bulk-tag or retag them with a required reason. Bank fees stay in the general fund unless they carry a code. Tagging is rule-based only, never AI
+- **Audit log**: sign-ins (and failed attempts), signatures, rejections, payouts, access changes, team changes, fund setup, vendor changes, refunds and data exports, with filters, CSV export and in-browser chain verification
+- **Funds & access**: who can approve each fund, join requests (approved by someone other than the requester), AI fund setup and fund closure with pro-rata **partial capture refunds** or carry-forwards
+- **Team**: admins create logins, change roles, reset passwords (which signs the person out everywhere) and deactivate accounts
+- **Copilot**: Claude with ClearAid tools plus the official **PayPal Agent Toolkit** and ledger-vs-PayPal reconciliation. Money-moving actions pause for confirmation, run as the signed-in person, and are audited
 
 ## How the PayPal integration works
 
@@ -88,48 +77,52 @@ The AI recommends and humans decide. A failed rule check can never be auto-appro
 
 ## Run it
 
+The app is two services: `backend/` (Hono API on port 4000) and `frontend/` (Next.js on port 3000, which proxies `/api/*` to the backend; set `BACKEND_URL` to point elsewhere).
+
 ```bash
-npm install
+cd backend && npm install && npm run dev
 ```
 
 ```bash
-cp .env.example .env.local   # optional: add PayPal sandbox + Anthropic keys
+cd frontend && npm install && npm run dev
 ```
 
-```bash
-npm run dev
-```
+Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys.
 
-Open http://localhost:3000 and use the persona menu (top right) to switch between public visitor, donors, NGO admins and vendors.
+Open http://localhost:3000 and sign in. Everything is behind sign-in; there are no public pages or donor accounts. Passwords are scrypt-hashed and the session cookie is HMAC-signed (set `SESSION_SECRET` in production). The demo logins are listed on the sign-in page:
+
+| Username | Password | Role |
+| --- | --- | --- |
+| `priya` | `admin-demo` | Admin: full audit log, team and access management, funds and vendors |
+| `daniel` | `user-demo` | Staff: assigned to all three funds |
+| `meera` | `user-demo` | Staff: no funds yet, has a pending request to join Monsoon Preparedness |
+
+Staff see only the funds they're assigned to (and the audit entries for those funds plus their own actions). Admins see everything.
 
 - **No keys:** "demo mode". PayPal calls are simulated (IDs prefixed `SIM-`) and AI features use heuristics. Everything is clearly labelled.
-- **`PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`:** real sandbox checkout, payouts and refunds. Use a sandbox business account with Payouts enabled, and give vendors sandbox personal-account emails.
+- **`PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`:** real sandbox payouts and refunds. Use a sandbox business account with Payouts enabled, and give vendors sandbox personal-account emails.
 - **`PAYPAL_WEBHOOK_ID`:** subscribe the webhook at `/api/paypal/webhook` to `PAYMENT.CAPTURE.*`, `PAYMENT.PAYOUTS-ITEM.*` and `CUSTOMER.DISPUTE.CREATED`.
-- **`ANTHROPIC_API_KEY`:** Claude audits, redaction, insights, Ask ClearAid and Copilot.
+- **`PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV`:** real Plaid (sandbox by default) on the Bank accounts page; try Plaid's sandbox user `user_good` / `pass_good`. Without them, "Connect bank" adds a simulated feed. Access tokens are stored AES-256-GCM encrypted.
+- **`ANTHROPIC_API_KEY`:** Claude audits, redaction, insights and Copilot.
 - **`ZAPIER_WEBHOOK_URL`:** every ledger event is POSTed as JSON (fan out to Slack, SMS or Sheets).
 
-Reset the demo any time from the persona menu ("Reset demo data").
-
-### Deploy on Render
-
-`render.yaml` is a one-click Blueprint. It builds with `npm ci && npm run build`, starts with `npm start`, and mounts a 1 GB disk at `/var/data` for the ledger and uploads. Set the secret env vars in the Render dashboard.
-
-### API
-
-`docs/ClearAid.postman_collection.json` covers every endpoint: funds, ledger, PayPal orders/capture, withdrawals, approvals, closure, Ask and Copilot.
+Admins can reset the demo from the sidebar ("Reset demo data").
 
 ## Project layout
 
 ```
-src/lib/          domain logic (funds, ledger, checks, paypal, db, seed)
-src/lib/ai/       Claude: redaction, audit, insights, agents, PayPal Agent Toolkit adapter
-src/app/api/      route handlers
-src/app/          pages: / (funds), /funds/[slug], /spend/[id], /me, /ngo, /vendor
-src/components/   UI (DonateBox, Charts, LedgerGrid, Chat, …)
+backend/src/lib/          domain logic (funds, ledger, audit log, checks, paypal, session, seed)
+backend/src/lib/ai/       Claude: redaction, audit, insights, agents, PayPal Agent Toolkit adapter
+backend/src/routes/       API routes (auth, overview, transactions, audit, funds, withdrawals, ngo/*)
+frontend/src/app/         pages: / (money flow), /transactions, /untagged, /funds, /funds/[slug] (fund trail), /sources, /audit, /settings, /copilot
+frontend/src/components/  AppShell, console (sign-in, queue, access, team, vendors), charts, grids
 ```
 
 ## Known limits (hackathon scope)
 
-- Demo personas instead of real auth. Production would use Log in with PayPal for donors and SSO for NGO staff.
-- JSON-file store on a single instance. Production would use Postgres; the ledger hash chain would be anchored periodically.
-- Pro-rata attribution charges each payout to the money in the fund at that moment. Early donors' money is therefore spent first, and leftovers belong to the donors whose money is still unspent.
+- Username/password only. Production would add SSO and MFA.
+- JSON-file store on a single instance. Production would use Postgres, and anchor the ledger and audit-log hash heads externally.
+- No payment-request intake screen yet: `POST /api/withdrawals` accepts requests from assigned staff (with `vendorId`), but the demo relies on seeded requests.
+- Bank money is tracked per fund but isn't tied to a PayPal donor, so fund closure refunds or carries forward only PayPal donations; bank money left in a closed fund stays on its ledger. Bank lines are USD only, and Plaid `modified`/`removed` updates aren't applied (pending lines are skipped instead).
+- A sample statement for the demo is in `docs/sample-bank-statement.csv`.
+- `render.yaml` still describes the earlier single-service layout.
