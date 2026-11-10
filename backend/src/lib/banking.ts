@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { anonymiseBankLine } from "./anonymise";
 import { audit } from "./audit";
 import { newId, nowIso } from "./db";
 import { appendLedger } from "./ledger";
@@ -18,6 +19,10 @@ import { CATEGORIES } from "./types";
  * Tagging is rule-based only: no AI ever guesses a code. Tagged money is
  * posted to the fund's hash-chained ledger (bank_in / bank_out). A retag never
  * edits history: it posts reversing entries, then the new allocation.
+ *
+ * Lines are anonymised before they are stored (see ./anonymise): names of
+ * private individuals become stable aliases and account numbers, phone
+ * numbers and emails are redacted. Tracking codes are never touched.
  */
 
 // ---------------------------------------------------------------- Codes ----
@@ -119,7 +124,25 @@ export function missingReceipt(db: DB, t: BankTxn, ngoId: string) {
 
 // -------------------------------------------------------------- Ingest ----
 
-export type ParsedRow = { date: string; amount: number; description: string; counterparty?: string; reference?: string; typeCode?: string };
+export type ParsedRow = {
+  date: string;
+  amount: number;
+  description: string;
+  counterparty?: string;
+  /** The counterparty is a merchant name supplied by the bank feed (a business), so it isn't anonymised. */
+  counterpartyIsMerchant?: boolean;
+  reference?: string;
+  typeCode?: string;
+};
+
+/**
+ * The anonymiser for one NGO's statement lines. The NGO's registered payees
+ * (and the NGO itself) are organisations it already knows, so they keep their names.
+ */
+export function statementAnonymiser(db: DB, ngoId: string) {
+  const knownOrganisations = [...db.vendors.filter((v) => v.ngoId === ngoId).map((v) => v.name), ...db.ngos.filter((n) => n.id === ngoId).map((n) => n.name)];
+  return (r: ParsedRow) => anonymiseBankLine(r, { scope: ngoId, knownOrganisations, counterpartyIsMerchant: r.counterpartyIsMerchant });
+}
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -215,7 +238,7 @@ function classify(db: DB, account: BankAccount, t: BankTxn, idx: Map<string, Fun
 
 /**
  * Add parsed rows to an account. Rows already imported are skipped, the rest
- * are matched against tracking codes. Call inside `mutate`.
+ * are anonymised and matched against tracking codes. Call inside `mutate`.
  */
 export function ingestRows(
   db: DB,
@@ -223,9 +246,11 @@ export function ingestRows(
   rows: ParsedRow[],
   meta: { source: StatementImport["source"]; fileName?: string; fileSha256?: string; actor: { id: string; name: string }; errors?: string[]; at?: string },
 ) {
+  // Keys come from the statement's own text (only a hash of it is kept), so a re-upload still matches after anonymisation.
   const keys = dedupeKeys(account.id, rows);
   const existing = new Set(db.bankTxns.filter((t) => t.accountId === account.id).map((t) => t.dedupeKey));
   const idx = codeIndex(db, account.ngoId);
+  const anonymise = statementAnonymiser(db, account.ngoId);
   const imp: StatementImport = {
     id: newId("imp"),
     accountId: account.id,
@@ -247,6 +272,7 @@ export function ingestRows(
       return;
     }
     existing.add(keys[i]);
+    const safe = anonymise(r);
     const t: BankTxn = {
       id: newId("btx"),
       accountId: account.id,
@@ -255,8 +281,9 @@ export function ingestRows(
       dedupeKey: keys[i],
       date: r.date,
       amount: r.amount,
-      description: r.description.slice(0, 300),
-      counterparty: r.counterparty?.slice(0, 120),
+      description: safe.description.slice(0, 300),
+      counterparty: safe.counterparty?.slice(0, 120),
+      anonymised: safe.found.length ? safe.found : undefined,
       typeCode: r.typeCode,
       isFee: r.amount < 0 && looksLikeFee(account, r.description, r.typeCode),
       status: "untagged",
@@ -266,6 +293,7 @@ export function ingestRows(
     };
     entries.push(...classify(db, account, t, idx, undefined, true));
     if (t.status === "auto_tagged") imp.autoTagged += 1;
+    if (safe.found.length) imp.anonymised = (imp.anonymised ?? 0) + 1;
     imp.imported += 1;
     db.bankTxns.push(t);
   });
@@ -510,6 +538,7 @@ export function txnView(db: DB, t: BankTxn, me?: { id: string; role: string }) {
     amount: t.amount,
     description: t.description,
     counterparty: t.counterparty,
+    anonymised: t.anonymised ?? [],
     reference: t.externalId,
     typeCode: t.typeCode,
     isFee: t.isFee,

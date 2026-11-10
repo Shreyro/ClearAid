@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { CreditCard, FileUp, Landmark, Link2, Loader2, PenLine, Plus, RefreshCw, Settings2, Unplug, X } from "lucide-react";
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
+import { AnonymisedNote } from "@/components/banking";
 import { ago, api, useJson, useLive, usd } from "@/components/hooks";
 import { Empty, Pill } from "@/components/ui";
 
@@ -24,7 +25,7 @@ type Account = {
   counts: { total: number; untagged: number; fees: number; tagged: number };
   moneyIn: number;
   moneyOut: number;
-  imports: { id: string; source: string; fileName?: string; rows: number; imported: number; duplicates: number; autoTagged: number; errors: string[]; createdAt: string; by: string }[];
+  imports: { id: string; source: string; fileName?: string; rows: number; imported: number; duplicates: number; autoTagged: number; anonymised: number; errors: string[]; createdAt: string; by: string }[];
 };
 type Resp = { accounts: Account[]; plaid: { live: boolean } };
 
@@ -90,7 +91,7 @@ export default function SourcesPage() {
   return (
     <Page
       title="Sources"
-      subtitle="Where transaction data comes from: PayPal, bank accounts (CSV statement upload or a live Plaid connection) and money recorded by staff. Every bank line is read for a tracking code (e.g. #RO1) and traced to that fund; the rest wait in Untagged."
+      subtitle="Where transaction data comes from: PayPal, bank accounts (CSV statement upload or a live Plaid connection) and money recorded by staff. Every bank line is read for a tracking code (e.g. #RO1) and traced to that fund; the rest wait in Untagged. Names of private individuals, account numbers, phone numbers and emails in bank lines are anonymised before they are stored."
       actions={
         isAdmin ? (
           <>
@@ -267,7 +268,7 @@ function AccountCard({ a, isAdmin, busy, run }: { a: Account; isAdmin: boolean; 
               <li key={i.id} className="py-2 flex flex-wrap gap-x-3 gap-y-1">
                 <span className="font-medium">{i.source === "csv" ? i.fileName : "Bank sync"}</span>
                 <span className="text-muted">{new Date(i.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {i.by}</span>
-                <span>{i.imported} new · {i.autoTagged} tagged by code · {i.duplicates} already imported</span>
+                <span>{i.imported} new · {i.autoTagged} tagged by code · {i.duplicates} already imported{i.anonymised > 0 ? ` · ${i.anonymised} anonymised` : ""}</span>
                 {i.errors.length > 0 && <span className="text-critical" title={i.errors.join("\n")}>{i.errors.length} unreadable row(s)</span>}
               </li>
             ))}
@@ -323,7 +324,10 @@ type Preview = {
   mapping: Mapping;
   missing: string[];
   sample: string[][];
-  parsed: { date: string; amount: number; description: string; reference?: string }[];
+  /** Rows as they will be stored, with personal details already replaced. */
+  parsed: { date: string; amount: number; description: string; reference?: string; anonymised: string[] }[];
+  /** How many readable rows have something replaced. */
+  anonymised: number;
   rowCount: number;
   validCount: number;
   errors: string[];
@@ -445,6 +449,11 @@ function Uploader({ account, onDone }: { account: Account; onDone: (msg: string)
                     <ul className="list-disc pl-5 mt-1">{preview.errors.map((e) => <li key={e}>{e}</li>)}</ul>
                   </details>
                 )}
+                <p className="text-xs text-ink-2 mt-1">
+                  {preview.anonymised > 0
+                    ? `Personal details will be anonymised on ${preview.anonymised} row${preview.anonymised === 1 ? "" : "s"}: a person's name becomes a stable alias, and account numbers, phone numbers and emails are redacted. The rows below are shown as they will be stored.`
+                    : "No personal details were found to anonymise in this file."}
+                </p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs min-w-[560px]">
@@ -454,7 +463,7 @@ function Uploader({ account, onDone }: { account: Account; onDone: (msg: string)
                       <tr key={i} className="border-b border-line last:border-0">
                         <td className="py-1.5 pr-3 tnum whitespace-nowrap">{r.date}</td>
                         <td className={clsx("py-1.5 pr-3 tnum text-right font-semibold whitespace-nowrap", r.amount < 0 ? "text-[#9b3d17]" : "text-good-ink")}>{r.amount < 0 ? "−" : "+"}{usd(Math.abs(r.amount))}</td>
-                        <td className="py-1.5 pr-3">{r.description}</td>
+                        <td className="py-1.5 pr-3">{r.description}{r.anonymised.length > 0 && <span className="ml-2"><AnonymisedNote kinds={r.anonymised} short /></span>}</td>
                         <td className="py-1.5 font-mono">{r.reference}</td>
                       </tr>
                     ))}

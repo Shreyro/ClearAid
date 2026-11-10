@@ -39,6 +39,6 @@ export function accountView(db: DB, a: BankAccount) {
     },
     moneyIn: sum((t) => t.amount > 0),
     moneyOut: -sum((t) => t.amount < 0),
-    imports: imports.slice(0, 8).map((i) => ({ id: i.id, source: i.source, fileName: i.fileName, rows: i.rows, imported: i.imported, duplicates: i.duplicates, autoTagged: i.autoTagged, errors: i.errors.slice(0, 20), createdAt: i.createdAt, by: db.ngos.flatMap((n) => n.members).find((m) => m.id === i.createdBy)?.name ?? i.createdBy })),
+    imports: imports.slice(0, 8).map((i) => ({ id: i.id, source: i.source, fileName: i.fileName, rows: i.rows, imported: i.imported, duplicates: i.duplicates, autoTagged: i.autoTagged, anonymised: i.anonymised ?? 0, errors: i.errors.slice(0, 20), createdAt: i.createdAt, by: db.ngos.flatMap((n) => n.members).find((m) => m.id === i.createdBy)?.name ?? i.createdBy })),
   };
 }

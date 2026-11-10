@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Loader2, Pencil, X } from "lucide-react";
+import { Check, EyeOff, Loader2, Pencil, X } from "lucide-react";
 import { api } from "@/components/hooks";
 
 /** Budget-category sub-codes understood after a dash, e.g. #RO1-MED. Must match SUBCODES in backend/src/lib/banking.ts. */
@@ -15,6 +15,20 @@ export const SUBCODE_HINT = [
   ["CASH", "Cash aid"],
   ["ADM", "Admin"],
 ] as const;
+
+/** What the backend anonymises on bank lines (PiiKind in backend/src/lib/anonymise.ts). */
+const PII_LABEL: Record<string, string> = { NAME: "name", EMAIL: "email", PHONE: "phone number", ACCOUNT: "account number", GOV_ID: "ID number" };
+export const piiLabels = (kinds: string[]) => kinds.map((k) => PII_LABEL[k] ?? k.toLowerCase()).join(", ");
+
+/** Marks a bank line whose personal details were replaced on import. */
+export function AnonymisedNote({ kinds, short }: { kinds: string[]; short?: boolean }) {
+  if (!kinds.length) return null;
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted" title="Replaced before the line was stored. A person keeps the same alias on every line; the bank reference is unchanged.">
+      <EyeOff className="h-3 w-3 shrink-0" aria-hidden /> {short ? "Anonymised" : `Anonymised on import: ${piiLabels(kinds)}`}
+    </span>
+  );
+}
 
 export function CodeChip({ code }: { code: string }) {
   return <span className="inline-flex items-center rounded-md border border-[#bfe3dc] bg-brand-wash px-1.5 py-0.5 font-mono text-[11px] font-semibold text-brand-ink">#{code}</span>;

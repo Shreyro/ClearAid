@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Check, Clock, FileText, History, Loader2, Paperclip, Plus, Receipt, Tag, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
-import { CodeChip, SUBCODE_HINT } from "@/components/banking";
+import { AnonymisedNote, CodeChip, SUBCODE_HINT } from "@/components/banking";
 import { api, useJson, useLive, usd } from "@/components/hooks";
 import { CAT_LABEL } from "@/components/SpendCard";
 import { Empty, Pill } from "@/components/ui";
@@ -20,6 +20,8 @@ type Txn = {
   amount: number;
   description: string;
   counterparty?: string;
+  /** What was replaced when the line was imported, e.g. ["NAME"]. */
+  anonymised: string[];
   reference?: string;
   isFee: boolean;
   status: "auto_tagged" | "tagged" | "untagged" | "fee_unallocated";
@@ -126,7 +128,7 @@ export default function UntaggedPage() {
       title="Untagged"
       subtitle={
         <>
-          Bank money whose fund can&apos;t be traced yet. Lines are matched to a fund by the tracking code in their description (e.g. <span className="font-mono">#RO1</span> or <span className="font-mono">#ASHA-MED</span>); lines with no code, an unknown code, or codes for two funds wait here until someone tags or splits them, with a reason. Nothing is guessed by AI.
+          Bank money whose fund can&apos;t be traced yet. Lines are matched to a fund by the tracking code in their description (e.g. <span className="font-mono">#RO1</span> or <span className="font-mono">#ASHA-MED</span>); lines with no code, an unknown code, or codes for two funds wait here until someone tags or splits them, with a reason. Nothing is guessed by AI. Names of private individuals, account numbers, phone numbers and emails are anonymised when a statement comes in.
         </>
       }
       actions={<Link href="/sources" className="btn btn-ghost">Sources</Link>}
@@ -230,6 +232,7 @@ export default function UntaggedPage() {
                       <div className="text-[11px] text-muted">
                         {[t.counterparty, t.reference && <span key="r" className="font-mono">{t.reference}</span>].filter(Boolean).map((x, i) => <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>)}
                       </div>
+                      {t.anonymised.length > 0 && <div className="mt-0.5"><AnonymisedNote kinds={t.anonymised} /></div>}
                       {t.untaggedReason && t.status !== "auto_tagged" && t.status !== "tagged" && <div className="text-[11px] text-[#7a5200] mt-0.5">{t.untaggedReason}{t.status === "untagged" && t.ageDays > 7 ? ` · waiting ${t.ageDays} days` : ""}</div>}
                       {t.status === "tagged" && t.reason && <div className="text-[11px] text-ink-2 mt-0.5">“{t.reason}” · {t.taggedByName}{t.approvedByName ? `, approved by ${t.approvedByName}` : ""}</div>}
                       {t.tagSource === "fee_policy" && t.reason && <div className="text-[11px] text-ink-2 mt-0.5">{t.reason}</div>}

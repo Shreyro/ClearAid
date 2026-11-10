@@ -77,6 +77,8 @@ export async function syncTransactions(accessToken: string, cursor: string | und
         amount: -Math.round(t.amount * 100),
         description: t.name,
         counterparty: t.merchant_name ?? undefined,
+        // Plaid's merchant_name is an enriched business name; people only appear in the free-text `name`.
+        counterpartyIsMerchant: Boolean(t.merchant_name),
         reference: t.transaction_id,
         typeCode: t.personal_finance_category?.primary === "BANK_FEES" ? "BANK_FEES" : undefined,
       });

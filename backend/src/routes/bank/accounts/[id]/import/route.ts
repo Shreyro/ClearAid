@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { audit } from "@/lib/audit";
-import { ingestRows } from "@/lib/banking";
+import { ingestRows, statementAnonymiser } from "@/lib/banking";
 import { detectMapping, missingFields, parseCsv, rowsFromCsv } from "@/lib/csv";
 import { getDb, mutate } from "@/lib/db";
 import { type Ctx, handle, json } from "@/lib/http";
@@ -15,6 +15,9 @@ const MAX_BYTES = 5 * 1024 * 1024;
  * Upload a CSV statement. `preview: true` returns the detected column mapping
  * and the first rows without saving anything; the second call (with the
  * confirmed `mapping`) imports. Any NGO staff member can upload.
+ *
+ * Personal details are anonymised before anything is saved; the preview shows
+ * the rows as they will be stored.
  */
 export const POST = handle(async (req: Request, ctx: Ctx<{ id: string }>) => {
   const me = await requireNgo();
@@ -38,13 +41,17 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ id: string }>) => {
 
   if (b.preview || missing.length) {
     const parsed = missing.length ? { rows: [], errors: [] } : rowsFromCsv(grid, mapping);
+    const anonymise = statementAnonymiser(getDb(), me.ngoId);
+    const safe = parsed.rows.map((r) => ({ row: r, ...anonymise(r) }));
     return json({
       preview: true,
       header,
       mapping,
       missing,
       sample: grid.slice(1, 6),
-      parsed: parsed.rows.slice(0, 8),
+      // Shown as they will be stored: names of individuals and account details already replaced.
+      parsed: safe.slice(0, 8).map((s) => ({ ...s.row, description: s.description, counterparty: s.counterparty, anonymised: s.found })),
+      anonymised: safe.filter((s) => s.found.length).length,
       rowCount: grid.length - 1,
       validCount: parsed.rows.length,
       errors: parsed.errors.slice(0, 20),
@@ -66,12 +73,12 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ id: string }>) => {
       actor: actorOf(me),
       action: "bank.imported",
       targetId: r.imp.id,
-      summary: `Imported ${r.imp.fileName} into ${acc.name}: ${r.imp.imported} new (${r.imp.autoTagged} tagged by code, ${untagged} need a tag), ${r.imp.duplicates} already imported${errors.length ? `, ${errors.length} unreadable` : ""}`,
-      meta: { rows: r.imp.rows, imported: r.imp.imported, autoTagged: r.imp.autoTagged, duplicates: r.imp.duplicates, sha256: sha.slice(0, 16) },
+      summary: `Imported ${r.imp.fileName} into ${acc.name}: ${r.imp.imported} new (${r.imp.autoTagged} tagged by code, ${untagged} need a tag), ${r.imp.duplicates} already imported${errors.length ? `, ${errors.length} unreadable` : ""}${r.imp.anonymised ? `. Personal details anonymised on ${r.imp.anonymised} line(s)` : ""}`,
+      meta: { rows: r.imp.rows, imported: r.imp.imported, autoTagged: r.imp.autoTagged, duplicates: r.imp.duplicates, anonymised: r.imp.anonymised ?? 0, sha256: sha.slice(0, 16) },
     });
     return r;
   });
   announce(res.entries);
   const db = getDb();
-  return json({ ok: true, import: res.imp, account: accountView(db, findAccount(db, me.ngoId, id)), message: `${res.imp.imported} new transactions (${res.imp.autoTagged} tagged by code), ${res.imp.duplicates} skipped as already imported. Money posted to funds: ${fmt(res.entries.reduce((s, e) => s + Math.abs(e.amount), 0))}.` });
+  return json({ ok: true, import: res.imp, account: accountView(db, findAccount(db, me.ngoId, id)), message: `${res.imp.imported} new transactions (${res.imp.autoTagged} tagged by code), ${res.imp.duplicates} skipped as already imported. Money posted to funds: ${fmt(res.entries.reduce((s, e) => s + Math.abs(e.amount), 0))}.${res.imp.anonymised ? ` Personal details anonymised on ${res.imp.anonymised} line${res.imp.anonymised === 1 ? "" : "s"}.` : ""}` });
 });
