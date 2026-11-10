@@ -28,8 +28,8 @@ export const POST = handle(async (_req: Request, ctx: Ctx<{ id: string }>) => {
         actor: actorOf(me),
         action: "bank.synced",
         targetId: r.imp.id,
-        summary: `Synced ${acc.name}${acc.plaid!.simulated ? " (simulated bank)" : " via Plaid"}: ${r.imp.imported} new (${r.imp.autoTagged} tagged by code), ${r.imp.duplicates} already imported${skipped ? `, ${skipped} pending skipped` : ""}`,
-        meta: { imported: r.imp.imported, autoTagged: r.imp.autoTagged, duplicates: r.imp.duplicates },
+        summary: `Synced ${acc.name}${acc.plaid!.simulated ? " (simulated bank)" : " via Plaid"}: ${r.imp.imported} new (${r.imp.autoTagged} tagged by code), ${r.imp.duplicates} already imported${skipped ? `, ${skipped} pending skipped` : ""}${r.imp.anonymised ? `. Personal details anonymised on ${r.imp.anonymised} line(s)` : ""}`,
+        meta: { imported: r.imp.imported, autoTagged: r.imp.autoTagged, duplicates: r.imp.duplicates, anonymised: r.imp.anonymised ?? 0 },
       });
       return r;
     });
@@ -39,7 +39,9 @@ export const POST = handle(async (_req: Request, ctx: Ctx<{ id: string }>) => {
       ok: true,
       import: res.imp,
       account: accountView(db, findAccount(db, me.ngoId, id)),
-      message: res.imp.imported ? `${res.imp.imported} new transactions (${res.imp.autoTagged} tagged by code).` : "No new transactions since the last sync.",
+      message: res.imp.imported
+        ? `${res.imp.imported} new transactions (${res.imp.autoTagged} tagged by code).${res.imp.anonymised ? ` Personal details anonymised on ${res.imp.anonymised} line${res.imp.anonymised === 1 ? "" : "s"}.` : ""}`
+        : "No new transactions since the last sync.",
     });
   });
 });

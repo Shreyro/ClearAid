@@ -15,6 +15,7 @@ Relief NGOs move money fast under pressure, and auditors, boards and grant maker
 | Unverified payees | Payouts go only to vendors an admin has verified (KYB) |
 | Altered records | Each fund's ledger and the NGO-wide audit log are SHA-256 hash chains, re-verifiable in the browser |
 | Beneficiary privacy | AI + regex PII redaction on request text; photos with identifiable people stay restricted |
+| Personal data in bank statements | Every bank line is anonymised before it is stored: names of private individuals become stable aliases (`Person-3F9A2C`), and account numbers, phone numbers, emails and ID numbers are redacted. Fixed rules, no AI |
 
 ## Features
 
@@ -23,6 +24,7 @@ Relief NGOs move money fast under pressure, and auditors, boards and grant maker
 - **Transactions**: every money movement across your funds (PayPal donations, staff-recorded bank transfers / cheques / grants, payouts, refunds, carry-forwards) with filters and CSV export. Staff can **record incoming money** received outside PayPal
 - **Bank accounts**: add accounts for **CSV statement upload** (columns auto-detected, mapping remembered, duplicate files and rows skipped) or connect a bank with **Plaid** (Link + `/transactions/sync`; a simulated bank feed when no Plaid keys are set)
 - **Tracking codes & Bank tagging**: each fund has one or more codes (e.g. `#RO1`, `#ASHA`); a bank line whose description carries one is tagged to that fund and posted to its ledger, optionally with a budget category (`#RO1-MED`). Lines with no code, an unknown code or codes for two funds wait in the **Bank tagging** queue, where staff tag, split, bulk-tag or retag them with a required reason. Bank fees stay in the general fund unless they carry a code. Tagging is rule-based only, never AI
+- **Statement anonymisation**: lines from a CSV upload or a bank feed are anonymised on the way in, before they reach the database, a fund ledger or the audit log. A private person's name is replaced with an alias that stays the same for that person across lines (a keyed hash, so it can't be reversed by guessing), and account / card numbers, UPI handles, phone numbers, emails and ID numbers become placeholders such as `[ACCOUNT ••9301]`. Organisations, registered payees, tracking codes, amounts and the bank's own reference are kept, so the money trail still reads. The upload preview shows the rows as they will be stored (`backend/src/lib/anonymise.ts`)
 - **Audit log**: sign-ins (and failed attempts), signatures, rejections, payouts, access changes, team changes, fund setup, vendor changes, refunds and data exports, with filters, CSV export and in-browser chain verification
 - **Funds & access**: who can approve each fund, join requests (approved by someone other than the requester), AI fund setup and fund closure with pro-rata **partial capture refunds** or carry-forwards
 - **Team**: admins create logins, change roles, reset passwords (which signs the person out everywhere) and deactivate accounts
@@ -87,7 +89,7 @@ cd backend && npm install && npm run dev
 cd frontend && npm install && npm run dev
 ```
 
-Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys.
+Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys. `npm test` in `backend/` runs the statement-anonymisation tests.
 
 Open http://localhost:3000 and sign in. Everything is behind sign-in; there are no public pages or donor accounts. Passwords are scrypt-hashed and the session cookie is HMAC-signed (set `SESSION_SECRET` in production). The demo logins are listed on the sign-in page:
 
@@ -111,7 +113,7 @@ Admins can reset the demo from the sidebar ("Reset demo data").
 ## Project layout
 
 ```
-backend/src/lib/          domain logic (funds, ledger, audit log, checks, paypal, session, seed)
+backend/src/lib/          domain logic (funds, ledger, audit log, banking, anonymise, checks, paypal, session, seed)
 backend/src/lib/ai/       Claude: redaction, audit, insights, agents, PayPal Agent Toolkit adapter
 backend/src/routes/       API routes (auth, overview, transactions, audit, funds, withdrawals, ngo/*)
 frontend/src/app/         pages: / (money flow), /transactions, /untagged, /funds, /funds/[slug] (fund trail), /sources, /audit, /settings, /copilot
@@ -124,5 +126,6 @@ frontend/src/components/  AppShell, console (sign-in, queue, access, team, vendo
 - JSON-file store on a single instance. Production would use Postgres, and anchor the ledger and audit-log hash heads externally.
 - No payment-request intake screen yet: `POST /api/withdrawals` accepts requests from assigned staff (with `vendorId`), but the demo relies on seeded requests.
 - Bank money is tracked per fund but isn't tied to a PayPal donor, so fund closure refunds or carries forward only PayPal donations; bank money left in a closed fund stays on its ledger. Bank lines are USD only, and Plaid `modified`/`removed` updates aren't applied (pending lines are skipped instead).
+- Statement anonymisation is rule-based. A person's name is recognised in the payee / payer column, or in the description after a payment rail (`NEFT CR Kavya Menon …`), a role word (`beneficiary …`) or a title (`Dr. …`); a name written elsewhere in free text is not. In the payee column, a business with no telling word in its name (Ltd, Traders, Foundation…) that isn't a registered payee is treated as a person. Lines imported before this was added keep their original text, because ledger entries can't be rewritten; "Reset demo data" reseeds the demo anonymised.
 - A sample statement for the demo is in `docs/sample-bank-statement.csv`.
 - `render.yaml` still describes the earlier single-service layout.

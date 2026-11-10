@@ -8,6 +8,7 @@
     "build": "esbuild src/server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "start": "node --enable-source-maps dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "paypal:check": "tsx --env-file-if-exists=.env scripts/check-paypal.ts"
   },
   "dependencies": {

@@ -408,6 +408,8 @@ export interface StatementImport {
   imported: number;
   duplicates: number;
   autoTagged: number;
+  /** New lines in which personal details were anonymised. */
+  anonymised?: number;
   errors: string[];
   createdAt: string;
   createdBy: string;
@@ -436,8 +438,11 @@ export interface BankTxn {
   date: string;
   /** Cents. Positive = money in, negative = money out. */
   amount: number;
+  /** As stored: personal details were anonymised on import (see lib/anonymise.ts). */
   description: string;
   counterparty?: string;
+  /** What was replaced on import, e.g. ["NAME", "ACCOUNT"]. Missing if nothing was (or on lines imported before anonymisation). */
+  anonymised?: string[];
   typeCode?: string;
   isFee: boolean;
   status: BankTxnStatus;
