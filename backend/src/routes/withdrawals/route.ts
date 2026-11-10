@@ -24,6 +24,9 @@ export const GET = handle(async (req: Request) => {
   return json({ withdrawals: list });
 });
 
+/** A file from a multipart form: whatever `FormData` holds that isn't a text value. */
+type Upload = Exclude<ReturnType<FormData["getAll"]>[number], string>;
+
 /** Staff on a fund log a vendor's payment request with the receipt and proof photos. */
 export const POST = handle(async (req: Request) => {
   const me = await requireNgo();
@@ -40,8 +43,10 @@ export const POST = handle(async (req: Request) => {
   const purpose = String(form.get("purpose") ?? "").trim();
   if (purpose.length < 10) throw new Error("Describe what was delivered and where");
 
-  const receipts = form.getAll("receipts").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 3);
-  const photos = form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 6);
+  // A multipart field holds text values and files; keep the non-empty files.
+  const files = (field: string) => form.getAll(field).filter((f): f is Upload => typeof f !== "string" && f.size > 0);
+  const receipts = files("receipts").slice(0, 3);
+  const photos = files("photos").slice(0, 6);
   if (!receipts.length) throw new Error("Attach the receipt or invoice");
   let meta: { dhash?: string; exif?: StoredFile["exif"] }[] = [];
   try {
