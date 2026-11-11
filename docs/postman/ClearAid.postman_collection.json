@@ -73,7 +73,10 @@
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"reports PayPal and AI mode\", () => { pm.expect(body.paypal).to.be.an(\"object\"); pm.expect(body.ai).to.be.an(\"object\"); });",
-                  "pm.test(\"no secrets in config\", () => { pm.expect(JSON.stringify(body)).to.not.match(/secret/i); });"
+                  "pm.test(\"no secrets in config\", () => { pm.expect(JSON.stringify(body)).to.not.match(/secret/i); });",
+                  "pm.test(\"all AI is local\", () => { pm.expect(body.ai.local).to.equal(true); pm.expect(body.ai.model).to.be.a(\"string\").and.not.empty; });",
+                  "pm.test(\"no cloud AI provider is configured\", () => { pm.expect(JSON.stringify(body)).to.not.match(/anthropic|claude|openai|gemini/i); });",
+                  "pm.test(\"no outbound webhook integration\", () => { pm.expect(body).to.not.have.property(\"zapier\"); });"
                 ]
               }
             }
@@ -725,6 +728,41 @@
                   "language": "json"
                 }
               }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signed out: GET /api/funds/fund_asha/returns is refused",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/fund_asha/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "fund_asha",
+                "returns"
+              ]
             }
           },
           "event": [
@@ -2478,6 +2516,124 @@
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"has its tracking code\", () => { pm.expect(body.fund.trackingCodes).to.include(\"PMT\"); });",
                   "pm.test(\"starts empty\", () => { pm.expect(body.stats.raised).to.equal(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a fund by hand (blank need row, leftover back to donors on)",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Hand-made Appeal\",\n  \"disaster\": \"\",\n  \"region\": \"Jagatsinghpur, Odisha\",\n  \"description\": \"Filled in by hand: no AI draft.\",\n  \"goalUsd\": 2000,\n  \"lat\": 0,\n  \"lng\": 0,\n  \"needs\": [\n    {\n      \"item\": \"Tarpaulin\",\n      \"category\": \"shelter\",\n      \"unit\": \"sheets\",\n      \"targetQty\": 50,\n      \"unitCostUsd\": 12\n    },\n    {\n      \"item\": \"\",\n      \"category\": \"food\",\n      \"unit\": \"\",\n      \"targetQty\": 1,\n      \"unitCostUsd\": 0\n    }\n  ],\n  \"categoryCaps\": {},\n  \"dualApprovalUsd\": 2500,\n  \"maxSingleUsd\": 6000,\n  \"fastLaneUsd\": 0,\n  \"trackingCodes\": [\n    \"PMH\"\n  ],\n  \"donorReturns\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"handFund\", body.id); } catch (e) {}",
+                  "try { pm.collectionVariables.set(\"handFundSlug\", body.slug); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hand-made fund keeps only the filled-in need",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"one need\", () => { pm.expect(body.fund.needs.length).to.equal(1); pm.expect(body.fund.needs[0].item).to.equal(\"Tarpaulin\"); });",
+                  "pm.test(\"disaster defaults to the title\", () => { pm.expect(body.fund.disaster).to.equal(\"Postman Hand-made Appeal\"); });",
+                  "pm.test(\"has its tracking code\", () => { pm.expect(body.fund.trackingCodes).to.include(\"PMH\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Funds list shows the leftover option",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"hand-made fund offers it\", () => { const f = body.funds.find((x) => x.id === pm.collectionVariables.get(\"handFund\")); pm.expect(f.donorReturns).to.equal(true); pm.expect(f.returnOptIns).to.equal(0); });",
+                  "pm.test(\"other funds are off by default\", () => { const f = body.funds.find((x) => x.id === pm.collectionVariables.get(\"newFund\")); pm.expect(f.donorReturns).to.equal(false); });"
                 ]
               }
             }
@@ -7066,8 +7222,9 @@
                   "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
-                  "pm.test(\"only what a donor needs\", () => { pm.expect(Object.keys(body).sort()).to.eql([\"fund\", \"limits\", \"ngo\", \"paypal\"]); });",
-                  "pm.test(\"no totals or ledger\", () => { pm.expect(JSON.stringify(body)).to.not.match(/raised|balance|ledger/); });"
+                  "pm.test(\"only what a donor needs\", () => { pm.expect(Object.keys(body).sort()).to.eql([\"fund\", \"limits\", \"ngo\", \"paypal\", \"returns\"]); });",
+                  "pm.test(\"no totals or ledger\", () => { pm.expect(JSON.stringify(body)).to.not.match(/raised|balance|ledger/); });",
+                  "pm.test(\"leftover return not offered on this fund\", () => { pm.expect(body.returns).to.equal(false); });"
                 ]
               }
             }
@@ -7436,6 +7593,104 @@
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Opt-in is ignored where the fund doesn't offer it",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/cyclone-asha/order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "cyclone-asha",
+                "order"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsd\": 10,\n  \"email\": \"asks.anyway@donors.example\",\n  \"returnOptIn\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"ignoredOrder\", body.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete it: no promise is made",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/cyclone-asha/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "cyclone-asha",
+                "capture"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{ignoredOrder}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"thanks without a return promise\", () => { pm.expect(body.message).to.match(/Thank you/); pm.expect(body.message).to.not.match(/sent back/); });"
                 ]
               }
             }
@@ -8573,6 +8828,187 @@
               }
             }
           ]
+        },
+        {
+          "name": "Publish an embed with a donate form",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/embeds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "embeds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"fundIds\": [\n    \"fund_asha\",\n    \"fund_mahanadi\"\n  ],\n  \"name\": \"Postman donate embed\",\n  \"publish\": {\n    \"totals\": true,\n    \"donate\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"donate form is on\", () => { pm.expect(body.embed.publish.donate).to.equal(true); });",
+                  "pm.test(\"listed in what it publishes\", () => { pm.expect(body.embed.blocks.join(\" \")).to.match(/donate form/); });",
+                  "try { pm.collectionVariables.set(\"donateEmbedId\", body.embed.id); } catch (e) {}",
+                  "try { pm.collectionVariables.set(\"donateEmbedKey\", body.embed.key); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Donate embed lists only open funds",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/embed/{{donateEmbedKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "embed",
+                "{{donateEmbedKey}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"the open fund is offered\", () => { pm.expect(body.donate.funds.map((f) => f.slug)).to.include(\"cyclone-asha\"); });",
+                  "pm.test(\"a closing fund is not\", () => { pm.expect(body.donate.funds.map((f) => f.slug)).to.not.include(\"mahanadi-floods\"); });",
+                  "pm.test(\"only what the donation link already shows\", () => { for (const f of body.donate.funds) pm.expect(Object.keys(f).sort()).to.eql([\"accent\", \"code\", \"returns\", \"slug\", \"title\"]); });",
+                  "pm.test(\"carries the fund's tracking code\", () => { pm.expect(body.donate.funds.find((f) => f.slug === \"cyclone-asha\").code).to.be.a(\"string\").and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Embed without the donate form has none",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/embeds/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "embeds",
+                "preview"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fundId\": \"fund_asha\",\n  \"publish\": {\n    \"totals\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"no donate block\", () => { pm.expect(body.donate).to.equal(undefined); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the donate embed",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/embeds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "embeds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"delete\",\n  \"id\": \"{{donateEmbedId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -8711,7 +9147,7 @@
           ]
         },
         {
-          "name": "Record a payment: no receipt uploaded",
+          "name": "Record a payment by hand, no receipt",
           "request": {
             "method": "POST",
             "header": [
@@ -8746,11 +9182,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
-                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                  "pm.test(\"recorded without a receipt\", () => { pm.expect(body.payment.receipt).to.equal(undefined); });",
+                  "try { pm.collectionVariables.set(\"manualPay\", body.payment.id); } catch (e) {}"
                 ]
               }
             }
@@ -8981,6 +9418,371 @@
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach a receipt without AI reading (manual entry)",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "scan"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "sample-manual-receipt.png"
+                },
+                {
+                  "key": "read",
+                  "type": "text",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"stored, not read\", () => { pm.expect(body.engine).to.equal(\"none\"); pm.expect(body.extraction).to.equal(null); pm.expect(body.note).to.match(/entered by hand/); });",
+                  "try { pm.collectionVariables.set(\"manualFile\", body.fileId); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record a payment by hand with its receipt",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"fundId\": \"fund_asha\",\n  \"amountUsd\": 275,\n  \"payee\": \"AquaPure Water Systems\",\n  \"date\": \"2026-11-02\",\n  \"method\": \"cash\",\n  \"invoiceNumber\": \"INV-4471\",\n  \"description\": \"400 jerrycans of drinking water\",\n  \"fileId\": \"{{manualFile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"keeps the receipt\", () => { pm.expect(body.payment.receipt.fileName).to.equal(\"sample-manual-receipt.png\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scan the receipt to attach later (PDF)",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "scan"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "sample-invoice.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"stored privately\", () => { pm.expect(body.url).to.include(body.fileId); });",
+                  "pm.test(\"read locally, or stored when the local reader is off\", () => { pm.expect([\"local\", \"none\"]).to.include(body.engine); });",
+                  "try { pm.collectionVariables.set(\"laterFile\", body.fileId); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach the receipt to the payment made without one",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"id\": \"{{manualPay}}\",\n  \"fileId\": \"{{laterFile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"attached\", () => { pm.expect(body.message).to.match(/Receipt attached/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach: payment already has its receipt",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"id\": \"{{manualPay}}\",\n  \"fileId\": \"{{laterFile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach: unknown payment",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"id\": \"pay_nope\",\n  \"fileId\": \"{{laterFile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach: no file uploaded",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"id\": \"{{manualPay}}\",\n  \"fileId\": \"file_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manual entries are in the audit log",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"noted as entered by hand\", () => { pm.expect(JSON.stringify(body)).to.match(/entered by hand, no receipt attached yet/); });",
+                  "pm.test(\"late receipt is logged\", () => { pm.expect(JSON.stringify(body)).to.match(/Attached the receipt to the/); });"
                 ]
               }
             }
@@ -10159,7 +10961,1459 @@
       ]
     },
     {
-      "name": "12 Closing a fund and finishing",
+      "name": "12 Leftover back to donors",
+      "description": "[v2]",
+      "item": [
+        {
+          "name": "Returns: on, nobody asked yet",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"on with no donors\", () => { pm.expect(body.enabled).to.equal(true); pm.expect(body.optedIn).to.equal(0); pm.expect(body.rows).to.eql([]); });",
+                  "pm.test(\"refund window is under PayPal's 180 days\", () => { pm.expect(body.refundWindowDays).to.be.below(180); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Turn it off",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"setting\",\n  \"enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"off, with what happens to the leftover\", () => { pm.expect(body.enabled).to.equal(false); pm.expect(body.message).to.match(/aren't offered/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Donation page no longer offers it",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"not offered\", () => { pm.expect(body.returns).to.equal(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Turn it off twice",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"setting\",\n  \"enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Turn it back on",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"setting\",\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Donation page offers it again",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"offered\", () => { pm.expect(body.returns).to.equal(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Donor gives and asks for their share back (gift 1)",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}/order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}",
+                "order"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsd\": 100,\n  \"name\": \"Two Gifts\",\n  \"email\": \"two.gifts@donors.example\",\n  \"returnOptIn\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"retOrder1\", body.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete gift 1: the promise is confirmed",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}",
+                "capture"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{retOrder1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"tells the donor\", () => { pm.expect(body.message).to.match(/sent back to you/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same donor gives again and asks (gift 2)",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}/order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}",
+                "order"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsd\": 100,\n  \"name\": \"Two Gifts\",\n  \"email\": \"two.gifts@donors.example\",\n  \"returnOptIn\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"retOrder2\", body.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete gift 2",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}",
+                "capture"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{retOrder2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Another donor gives and doesn't ask",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}/order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}",
+                "order"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsd\": 300,\n  \"email\": \"keep.it@donors.example\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"retOrder3\", body.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete the third gift",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/{{handFundSlug}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "{{handFundSlug}}",
+                "capture"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{retOrder3}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"no return promised\", () => { pm.expect(body.message).to.not.match(/sent back/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Two gifts from one donor count as one",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"one donor asked\", () => { pm.expect(body.optedIn).to.equal(1); pm.expect(body.rows.length).to.equal(1); });",
+                  "pm.test(\"both gifts on one row\", () => { pm.expect(body.rows[0].gifts).to.equal(2); pm.expect(body.rows[0].given).to.equal(20000); });",
+                  "pm.test(\"nothing owed while the fund is open\", () => { pm.expect(body.remaining).to.equal(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Funds list counts who asked",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"one donor asked\", () => { pm.expect(body.funds.find((x) => x.id === pm.collectionVariables.get(\"handFund\")).returnOptIns).to.equal(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send before closing is refused",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"send\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"says to start closing\", () => { pm.expect(body.error).to.match(/Start closing/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start closing the hand-made fund",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "close"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"start\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"now closing\", () => { pm.expect(body.status).to.equal(\"closing\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Each donor's share = leftover x what they gave / everything raised",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"leftover and total raised were noted at closing\", () => { pm.expect(body.base.leftover).to.be.above(0); pm.expect(body.base.raised).to.be.above(0); });",
+                  "pm.test(\"share worked out from the snapshot\", () => { const r = body.rows[0]; pm.expect(r.owed).to.equal(Math.min(r.given, Math.floor(body.base.leftover * r.given / body.base.raised))); });",
+                  "pm.test(\"share in percent\", () => { pm.expect(body.rows[0].sharePct).to.be.closeTo(body.rows[0].given / body.base.raised * 100, 0.001); });",
+                  "pm.test(\"recent gifts go back as refunds\", () => { pm.expect(body.rows[0].method).to.equal(\"refund\"); });",
+                  "pm.test(\"all of it still to send\", () => { pm.expect(body.remaining).to.equal(body.rows[0].owed); });",
+                  "try { pm.collectionVariables.set(\"owed\", body.rows[0].owed); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask for one payout per donor instead",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns?prefer=payout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ],
+              "query": [
+                {
+                  "key": "prefer",
+                  "value": "payout"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"method switches\", () => { pm.expect(body.rows[0].method).to.equal(\"payout\"); });",
+                  "pm.test(\"same amount\", () => { pm.expect(body.rows[0].remaining).to.equal(Number(pm.collectionVariables.get(\"owed\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Closing screen reserves the owed money",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "close"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"owed shown\", () => { pm.expect(body.owedToDonors).to.equal(Number(pm.collectionVariables.get(\"owed\"))); });",
+                  "try { pm.collectionVariables.set(\"moveTooMuch\", ((body.held - body.owedToDonors + 100) / 100).toFixed(2)); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Moving the donors' money away is refused",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "close"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"move\",\n  \"transfers\": [\n    {\n      \"fundId\": \"fund_asha\",\n      \"amountUsd\": \"{{moveTooMuch}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"explains what is owed\", () => { pm.expect(body.error).to.match(/owed to donors/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send the returns",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"send\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"sends exactly what is owed\", () => { pm.expect(body.sent).to.equal(Number(pm.collectionVariables.get(\"owed\"))); });",
+                  "pm.test(\"one donor, done\", () => { pm.expect(body.results.length).to.equal(1); pm.expect(body.results[0].status).to.equal(\"completed\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nothing more to send",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"send\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"nothing owed\", () => { pm.expect(body.error).to.match(/Nothing is owed/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History shows the return",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"nothing left owed\", () => { pm.expect(body.remaining).to.equal(0); pm.expect(body.rows[0].sent).to.equal(body.rows[0].owed); });",
+                  "pm.test(\"one refund in the history\", () => { pm.expect(body.history.length).to.equal(1); pm.expect(body.history[0].method).to.equal(\"refund\"); pm.expect(body.history[0].status).to.equal(\"completed\"); });",
+                  "pm.test(\"marked simulated without PayPal keys\", () => { pm.expect(body.history[0].live).to.equal(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ledger shows the return and still verifies",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/ledger",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "ledger"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"chain valid\", () => { pm.expect(body.verification.valid).to.equal(true); });",
+                  "pm.test(\"leftover return on the ledger\", () => { const e = body.entries.find((x) => x.type === \"refund\" && x.memo.startsWith(\"Leftover returned\")); pm.expect(e).to.be.an(\"object\"); pm.expect(e.amount).to.equal(-Number(pm.collectionVariables.get(\"owed\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Returns are in the audit log",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"logged\", () => { pm.expect(JSON.stringify(body)).to.match(/who asked for their share/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Turning it off keeps the promise to donors who asked",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"setting\",\n  \"enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"earlier donors still get theirs\", () => { pm.expect(body.message).to.match(/still get their share/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Returns: unknown action",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Returns: unknown fund",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/fund_nope/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "fund_nope",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Finish closing the hand-made fund",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/{{handFund}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "{{handFund}}",
+                "close"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"finalize\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"closed\", () => { pm.expect(body.status).to.equal(\"closed\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in as daniel",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"daniel\",\n  \"password\": \"user-demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff: cannot see donor returns",
+          "description": "[v2]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/fund_asha/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "fund_asha",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff: cannot send donor returns",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds/fund_asha/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds",
+                "fund_asha",
+                "returns"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"send\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in as priya",
+          "description": "[v2]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"priya\",\n  \"password\": \"admin-demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "13 Closing a fund and finishing",
       "description": "Fund closure, then sign-out and demo reset.",
       "item": [
         {
