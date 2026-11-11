@@ -51,7 +51,7 @@ export function MoneyFlowChart({ entries, startedAt }: { entries: Entry[]; start
         // Bank lines are signed; a retag posts a reversing entry, so add them as-is.
         if (e.type === "bank_in") raised += e.amount;
         if (e.type === "bank_out" || e.type === "expense") spent += -e.amount;
-        if (e.type === "refund" || e.type === "carry_forward_out") raised += e.amount; // money returned leaves the pot
+        if (e.type === "refund" || e.type === "refund_reversed" || e.type === "carry_forward_out") raised += e.amount; // money returned leaves the pot (a reversal brings it back)
       }
       out.push({ t: Math.min(start + (d + 1) * 86400_000, end), raised, spent });
     }

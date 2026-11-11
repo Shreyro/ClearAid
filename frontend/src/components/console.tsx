@@ -226,7 +226,7 @@ export function Queue({ me, onGoToAccess }: { me: Member; onGoToAccess: () => vo
 
 // ------------------------------------------------------------------ Funds ----
 
-type FundCard = { id: string; slug: string; title: string; status: string; raised: number; spent: number; balance: number; donors: number; transparency: number; trackingCodes: string[]; bankIn: number; bankOut: number; paypalAccountId: string };
+type FundCard = { id: string; slug: string; title: string; status: string; raised: number; spent: number; balance: number; donors: number; transparency: number; trackingCodes: string[]; bankIn: number; bankOut: number; paypalAccountId: string; donorReturns?: boolean; returnOptIns?: number };
 type Draft = { title: string; disaster: string; region: string; description: string; goal: number; lat: number; lng: number; needs: { item: string; category: string; unit: string; targetQty: number; unitCost: number }[]; categoryCaps: Record<string, number>; engine: string };
 
 type AccessFund = {
@@ -441,6 +441,18 @@ export function FundAdmin() {
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
 
+  async function setReturns(fundId: string, enabled: boolean) {
+    setSaving(`ret:${fundId}`);
+    try {
+      setMsg((await api<{ message: string }>(`/api/funds/${fundId}/returns`, { json: { action: "setting", enabled } })).message);
+      await reload();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setSaving(null);
+    }
+  }
+
   async function setAccount(fundId: string, accountId: string) {
     setSaving(fundId);
     try {
@@ -462,12 +474,13 @@ export function FundAdmin() {
       {creating && <CreateFund onCreated={() => { setCreating(false); void reload(); }} funds={data?.funds ?? []} />}
       {msg && <div className="card p-3 text-sm bg-brand-wash border-brand-line">{msg}</div>}
       <div className="card overflow-x-auto">
-        <table className="w-full text-sm min-w-[880px]">
+        <table className="w-full text-sm min-w-[1040px]">
           <thead>
             <tr className="text-left text-xs text-muted border-b border-line">
               <th className="px-4 py-2.5 font-medium">Fund</th>
               <th className="px-4 py-2.5 font-medium">Tracking codes</th>
               <th className="px-4 py-2.5 font-medium">PayPal account</th>
+              <th className="px-4 py-2.5 font-medium" title="Donors may ask, when they give, for their share of whatever is left when the fund closes">Leftover back to donors</th>
               <th className="px-4 py-2.5 font-medium text-right">In</th>
               <th className="px-4 py-2.5 font-medium text-right">Out</th>
               <th className="px-4 py-2.5 font-medium text-right">Held</th>
@@ -498,6 +511,20 @@ export function FundAdmin() {
                       {saving === f.id && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(f.donorReturns)}
+                      disabled={f.status === "closed" || saving === `ret:${f.id}`}
+                      onChange={(e) => void setReturns(f.id, e.target.checked)}
+                      aria-label={`Let donors to ${f.title} ask for their share of the leftover back`}
+                    />
+                    <span className="text-ink-2">{f.donorReturns ? "Offered" : "Off"}</span>
+                    {saving === `ret:${f.id}` && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
+                  </label>
+                  {f.returnOptIns ? <div className="text-xs text-muted">{f.returnOptIns} donor{f.returnOptIns === 1 ? "" : "s"} asked</div> : null}
                 </td>
                 <td className="px-4 py-3 text-right tnum">{usd(f.raised)}{f.bankIn ? <div className="text-xs text-muted">{usd(f.bankIn)} via bank</div> : null}</td>
                 <td className="px-4 py-3 text-right tnum">{usd(f.spent)}</td>

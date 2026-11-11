@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, ArrowDownLeft, ArrowUpRight, MapPin, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 import { usd } from "./hooks";
+import { DonateForm } from "./DonateForm";
 import { CumulativeChart } from "./Charts";
 import { Sankey, type FlowGraph } from "./Sankey";
 import type { EmbedTheme } from "./embedTheme";
@@ -27,7 +28,29 @@ export type EmbedData = {
   activity?: { date: string; direction: "in" | "out"; label: string; detail?: string; payee?: string; amount: number; fund?: string }[];
   integrity?: { valid: boolean; entries: number; head: string | null; ledgers?: number };
   funds?: { title: string; status: string; accent: string; in: number; out: number; held: number }[];
+  /** The donate form: the published funds still taking donations. */
+  donate?: { funds: { slug: string; title: string; accent: string; code: string | null; returns: boolean }[] };
 };
+
+/** Give to one of the embed's open funds, through that fund's own donation link. */
+function DonateBlock({ funds, preview }: { funds: NonNullable<EmbedData["donate"]>["funds"]; preview?: boolean }) {
+  const [slug, setSlug] = useState(funds[0]?.slug ?? "");
+  const current = funds.find((f) => f.slug === slug) ?? funds[0];
+  if (!current) return <p className="text-sm text-muted">No fund is taking donations right now.</p>;
+  return (
+    <div className="space-y-4">
+      {funds.length > 1 && (
+        <div>
+          <label className="label" htmlFor="donate-fund">Give to</label>
+          <select id="donate-fund" className="input" value={current.slug} onChange={(e) => setSlug(e.target.value)}>
+            {funds.map((f) => <option key={f.slug} value={f.slug}>{f.title}</option>)}
+          </select>
+        </div>
+      )}
+      <DonateForm key={current.slug} slug={current.slug} preview={preview} compact />
+    </div>
+  );
+}
 
 // Day-only dates are published in UTC; show them as that day wherever the reader is.
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -92,8 +115,8 @@ function Block({ title, children, className }: { title: string; children: React.
  * for the preview an admin sees before publishing. Layout follows the width of
  * the box it is in (container queries), not the browser window.
  */
-export function EmbedView({ data }: { data: EmbedData }) {
-  const { fund, ngo, totals, sources, categories, payees, flow, timeline, activity, integrity, funds } = data;
+export function EmbedView({ data, preview }: { data: EmbedData; preview?: boolean }) {
+  const { fund, ngo, totals, sources, categories, payees, flow, timeline, activity, integrity, funds, donate } = data;
   const combined = data.scope === "combined";
   const asOf = new Date(data.asOf).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   const overspent = totals ? totals.held < 0 : false;
@@ -118,6 +141,12 @@ export function EmbedView({ data }: { data: EmbedData }) {
             {totals.returned > 0 && <Stat label="Returned" value={usd(totals.returned, true)} sub="refunds and carry-forwards" />}
             <Stat label={overspent ? "Overspent" : "Still held"} value={usd(Math.abs(totals.held), true)} sub={overspent ? "paid out ahead of money in" : undefined} />
           </div>
+        )}
+
+        {donate && (
+          <Block title="Donate">
+            <DonateBlock funds={donate.funds} preview={preview} />
+          </Block>
         )}
 
         {funds && (

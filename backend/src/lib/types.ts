@@ -153,6 +153,17 @@ export interface Fund {
   paypalAccountId?: string;
   closingStartedAt?: string;
   closedAt?: string;
+  /**
+   * Donors may ask, when they give, to get their share of whatever is left
+   * when the fund closes. Off by default; an admin switches it per fund.
+   * Turning it off stops new requests; donors who already asked keep theirs.
+   */
+  donorReturns?: boolean;
+  /**
+   * Taken when closing starts: the money still held and everything the fund
+   * ever raised. A donor who asked gets leftover × (their gifts ÷ raised).
+   */
+  returnBase?: { leftover: number; raised: number; at: string };
   accent: string;
   insights?: FundInsights;
   demo?: boolean;
@@ -178,6 +189,8 @@ export interface Capture {
   refunded: number;
   createdAt: string;
   live: boolean;
+  /** The payer's PayPal email, where a return by payout is sent. */
+  payerEmail?: string;
 }
 
 export interface Donation {
@@ -195,6 +208,10 @@ export interface Donation {
   carriedOut: number;
   createdAt: string;
   election?: { choice: "refund" | "carry_forward"; targetFundId?: string; at: string };
+  /** The donor asked to get their share of the leftover back when the fund closes. */
+  returnOptIn?: boolean;
+  /** Part of this gift sent back to the donor as their share of the leftover. */
+  returned?: number;
 }
 
 export interface Vendor {
@@ -320,6 +337,8 @@ export type LedgerType =
   | "withdrawal"
   | "withdrawal_rejected"
   | "refund"
+  /** A return to a donor that came back (e.g. an unclaimed payout): the money is on the fund again. */
+  | "refund_reversed"
   | "carry_forward_out"
   | "carry_forward_in"
   | "dispute_opened"
@@ -350,8 +369,41 @@ export interface PendingOrder {
   donorName?: string;
   donorEmail?: string;
   showName: boolean;
+  /** The donor ticked "return my share of what's left when the fund closes". */
+  returnOptIn?: boolean;
   createdAt: string;
   status: "created" | "captured";
+}
+
+/**
+ * Money sent back to one donor from one PayPal account when a fund closes:
+ * their share of the leftover, as refunds of their gifts (under 180 days old)
+ * or one payout to their PayPal email.
+ */
+export interface DonorReturn {
+  id: string;
+  ngoId: string;
+  fundId: string;
+  donorId: string;
+  /** PayPal account it was sent from (missing: the default account). */
+  accountId?: string;
+  /** Cents sent (refunds that went through, or the payout). */
+  amount: number;
+  method: "refund" | "payout";
+  /**
+   * sent: PayPal accepted it. completed: the donor has it. unclaimed: a payout
+   * nobody has claimed yet. returned: the payout came back to the NGO (the
+   * money is back on the fund). failed: PayPal refused it; nothing was sent.
+   */
+  status: "sent" | "completed" | "unclaimed" | "returned" | "failed";
+  refunds?: { captureId: string; refundId: string; amount: number }[];
+  payout?: { batchId: string; email: string; status: string };
+  /** Which of the donor's gifts it came out of, so a payout that comes back can be undone exactly. */
+  parts?: { donationId: string; amount: number }[];
+  live: boolean;
+  error?: string;
+  createdAt: string;
+  byName: string;
 }
 
 export interface DB {
@@ -378,6 +430,8 @@ export interface DB {
   payments?: DeclaredPayment[];
   /** Public embeds. Missing on data saved before they existed; read through `embedsOf`. */
   embeds?: PublicEmbed[];
+  /** Leftover money returned to donors who asked for it. Read through `returnsOf`. */
+  donorReturns?: DonorReturn[];
 }
 
 // ------------------------------------------------------- Public embeds ----
@@ -409,6 +463,8 @@ export interface EmbedPublish {
   integrity: boolean;
   /** Embeds of two or more funds only: each fund's own totals (in, out, still held). */
   funds: boolean;
+  /** A donate form (PayPal) for the fund, or a choice of its open funds. Missing on older embeds: off. */
+  donate?: boolean;
 }
 
 /** A read-only widget for one fund that any website can show in an iframe. */
@@ -635,6 +691,8 @@ export type AuditAction =
   | "fund.closing_started"
   | "fund.closed"
   | "fund.leftover_moved"
+  | "fund.donor_returns_changed"
+  | "fund.donor_returns_sent"
   | "vendor.created"
   | "vendor.verified"
   | "transaction.recorded"

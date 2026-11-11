@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Landmark, Loader2, Lock, Plus, X } from "lucide-react";
+import { ArrowRight, Landmark, Loader2, Lock, Plus, Undo2, X } from "lucide-react";
 import clsx from "clsx";
 import { api, useJson, usd } from "./hooks";
 import { Section } from "./ui";
@@ -11,6 +11,8 @@ type Preview = {
   held: number;
   movedOut: number;
   fromDonors: number;
+  /** Owed to donors who asked for their share back and not sent yet; it can't be moved. */
+  owedToDonors: number;
   targets: { id: string; title: string; slug: string; accent: string }[];
 };
 type Row = { fundId: string; amount: string };
@@ -37,9 +39,11 @@ export function CloseFund({ fundId, title, stamp, onDone }: { fundId: string; ti
   if (!data) return null;
   if (data.status === "closed" && data.held === 0) return null;
 
+  const owed = data.owedToDonors ?? 0;
+  const free = Math.max(0, data.held - owed);
   const moving = rows.reduce((a, r) => a + (r.fundId ? cents(r.amount) : 0), 0);
-  const left = data.held - moving;
-  const bad = rows.some((r) => r.amount && (!r.fundId || !(cents(r.amount) > 0))) || moving > data.held;
+  const left = data.held - owed - moving;
+  const bad = rows.some((r) => r.amount && (!r.fundId || !(cents(r.amount) > 0))) || moving > free;
   const used = new Set(rows.map((r) => r.fundId));
   const freeTargets = data.targets.filter((t) => !used.has(t.id));
 
@@ -93,6 +97,8 @@ export function CloseFund({ fundId, title, stamp, onDone }: { fundId: string; ti
   // ---- Step 2 (closing) or later (closed with money still held): where the leftover goes.
   const closing = data.status === "closing";
   return (
+    <>
+    <DonorReturns fundId={fundId} stamp={stamp} onDone={() => { void reload(); onDone(); }} />
     <Section title={closing ? `Close ${title}` : "Money still held after closure"}>
       <div className="space-y-4">
         {done && <div className="rounded-lg bg-brand-wash border border-brand-line p-3 text-sm">{done}</div>}
@@ -133,7 +139,7 @@ export function CloseFund({ fundId, title, stamp, onDone }: { fundId: string; ti
                       aria-label={`Amount for transfer ${i + 1}`}
                     />
                   </div>
-                  <button type="button" className="text-xs underline text-ink-2 hover:text-ink" onClick={() => setRow(i, { amount: (Math.max(0, data.held - others) / 100).toFixed(2) })}>
+                  <button type="button" className="text-xs underline text-ink-2 hover:text-ink" onClick={() => setRow(i, { amount: (Math.max(0, free - others) / 100).toFixed(2) })}>
                     Rest
                   </button>
                   <button type="button" className="p-1.5 text-muted hover:text-critical rounded" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} aria-label={`Remove transfer ${i + 1}`}>
@@ -151,9 +157,10 @@ export function CloseFund({ fundId, title, stamp, onDone }: { fundId: string; ti
         )}
 
         <div className="rounded-lg border border-line divide-y divide-line text-sm max-w-md">
+          {owed > 0 && <div className="flex justify-between px-3 py-2"><span className="text-ink-2">Owed to donors who asked for their share</span><span className="tnum font-medium">{usd(owed)}</span></div>}
           <div className="flex justify-between px-3 py-2"><span className="text-ink-2">Moves to other funds</span><span className="tnum font-medium">{usd(moving)}</span></div>
           <div className={clsx("flex justify-between px-3 py-2", left < 0 && "text-critical")}>
-            <span className={left < 0 ? "" : "text-ink-2"}>{left < 0 ? "More than is held" : "Stays in the bank, held on this fund"}</span>
+            <span className={left < 0 ? "" : "text-ink-2"}>{left < 0 ? (owed > 0 ? "More than is free to move" : "More than is held") : "Stays in the bank, held on this fund"}</span>
             <span className="tnum font-semibold">{usd(Math.abs(left))}</span>
           </div>
         </div>
@@ -179,6 +186,181 @@ export function CloseFund({ fundId, title, stamp, onDone }: { fundId: string; ti
             </button>
           )}
         </div>
+      </div>
+    </Section>
+    </>
+  );
+}
+
+type ReturnRow = {
+  key: string;
+  donor: string;
+  email: string | null;
+  accountName: string;
+  gifts: number;
+  given: number;
+  sharePct: number;
+  owed: number;
+  sent: number;
+  remaining: number;
+  method: "refund" | "payout";
+  oldestGiftDays: number;
+  blocker?: string;
+};
+type Returns = {
+  enabled: boolean;
+  status: "active" | "closing" | "closed";
+  optedIn: number;
+  refundWindowDays: number;
+  base: { leftover: number; raised: number; at: string } | null;
+  rows: ReturnRow[];
+  remaining: number;
+  sent: number;
+  history: { id: string; donor: string; account: string; amount: number; method: "refund" | "payout"; status: string; live: boolean; error?: string; at: string; by: string }[];
+};
+
+const STATUS: Record<string, { label: string; tone: string }> = {
+  completed: { label: "Done", tone: "text-good-ink" },
+  sent: { label: "Sent, waiting for PayPal", tone: "text-ink-2" },
+  unclaimed: { label: "Not claimed yet", tone: "text-warn-ink" },
+  returned: { label: "Came back: owed again", tone: "text-warn-ink" },
+  failed: { label: "Refused by PayPal", tone: "text-critical" },
+};
+
+/**
+ * Donors who ticked "return my share of what's left" when they gave: what each
+ * is owed (leftover × their share of everything raised, one line per donor and
+ * PayPal account), and sending it as refunds or one payout.
+ */
+function DonorReturns({ fundId, stamp, onDone }: { fundId: string; stamp: unknown; onDone: () => void }) {
+  const [prefer, setPrefer] = useState<"auto" | "payout">("auto");
+  const { data, reload } = useJson<Returns>(`/api/funds/${fundId}/returns?prefer=${prefer}`);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+
+  useEffect(() => {
+    void reload();
+  }, [stamp, reload]);
+
+  if (!data || (!data.rows.length && !data.history.length)) return null;
+  const sendable = data.rows.filter((r) => r.remaining > 0 && !r.blocker);
+  const toSend = sendable.reduce((a, r) => a + r.remaining, 0);
+  const blocked = data.rows.filter((r) => r.remaining > 0 && r.blocker);
+  const recent = data.rows.some((r) => r.remaining > 0 && r.oldestGiftDays < data.refundWindowDays);
+
+  async function send() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ message: string; results: { status: string }[] }>(`/api/funds/${fundId}/returns`, { json: { action: "send", prefer } });
+      setMsg({ text: r.message, bad: r.results.some((x) => x.status === "failed") });
+      setConfirming(false);
+      await reload();
+      onDone();
+    } catch (e) {
+      setMsg({ text: (e as Error).message, bad: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section title="Leftover back to donors who asked">
+      <div className="space-y-4">
+        <p className="text-sm text-ink-2 max-w-3xl">
+          {data.optedIn} donor{data.optedIn === 1 ? "" : "s"} asked, when they gave, for their share of whatever is left. Each gets the leftover times their share of everything the fund raised
+          {data.base && <> ({usd(data.base.leftover)} was left of {usd(data.base.raised)} raised when closing started)</>}, worked out once per donor however many gifts they made.
+          Gifts under {data.refundWindowDays} days old are refunded; older ones go back as one PayPal payout to the donor.
+          {!data.enabled && " New donors aren't offered this any more, but these donors still get their share."}
+        </p>
+
+        {recent && data.remaining > 0 && (
+          <fieldset className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+            <legend className="sr-only">How to send</legend>
+            <label className="inline-flex items-center gap-2"><input type="radio" name={`ret-${fundId}`} checked={prefer === "auto"} onChange={() => setPrefer("auto")} /> Refund recent gifts, pay out the rest</label>
+            <label className="inline-flex items-center gap-2"><input type="radio" name={`ret-${fundId}`} checked={prefer === "payout"} onChange={() => setPrefer("payout")} /> One payout per donor</label>
+          </fieldset>
+        )}
+
+        <div className="overflow-x-auto rounded-lg border border-line">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="text-left text-xs text-muted border-b border-line">
+                <th className="px-3 py-2 font-medium">Donor</th>
+                <th className="px-3 py-2 font-medium">PayPal account</th>
+                <th className="px-3 py-2 font-medium text-right">Gave</th>
+                <th className="px-3 py-2 font-medium text-right">Share</th>
+                <th className="px-3 py-2 font-medium text-right">Owed</th>
+                <th className="px-3 py-2 font-medium text-right">Sent</th>
+                <th className="px-3 py-2 font-medium">To send</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((r) => (
+                <tr key={r.key} className="border-b border-line last:border-0">
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{r.donor}</div>
+                    <div className="text-xs text-muted">{r.email ?? "no PayPal email"} · {r.gifts} gift{r.gifts === 1 ? "" : "s"}</div>
+                  </td>
+                  <td className="px-3 py-2 text-ink-2">{r.accountName}</td>
+                  <td className="px-3 py-2 text-right tnum">{usd(r.given)}</td>
+                  <td className="px-3 py-2 text-right tnum">{r.sharePct.toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-right tnum">{usd(r.owed)}</td>
+                  <td className="px-3 py-2 text-right tnum">{r.sent ? usd(r.sent) : "—"}</td>
+                  <td className="px-3 py-2">
+                    {r.remaining > 0 ? (
+                      <>
+                        <span className="tnum font-semibold">{usd(r.remaining)}</span>{" "}
+                        <span className="text-xs text-ink-2">{r.method === "refund" ? "as refunds" : "as a payout"}</span>
+                        {r.blocker && <div className="text-xs text-critical">{r.blocker}</div>}
+                      </>
+                    ) : (
+                      <span className="text-xs text-good-ink">All sent</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {msg && <div className={clsx("rounded-lg border p-3 text-sm", msg.bad ? "border-bad-line bg-bad-wash" : "border-brand-line bg-brand-wash")}>{msg.text}</div>}
+
+        {toSend > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {confirming ? (
+              <>
+                <button className="btn btn-ghost" disabled={busy} onClick={() => setConfirming(false)}>Back</button>
+                <button className="btn btn-danger" disabled={busy} onClick={send}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />} Yes, send {usd(toSend)} to {sendable.length} donor{sendable.length === 1 ? "" : "s"}
+                </button>
+                <span className="text-xs text-muted">The money leaves your PayPal account now. It can&apos;t be undone from ClearAid.</span>
+              </>
+            ) : (
+              <button className="btn btn-primary" onClick={() => setConfirming(true)}><Undo2 className="h-4 w-4" /> Send {usd(toSend)} to {sendable.length} donor{sendable.length === 1 ? "" : "s"}…</button>
+            )}
+          </div>
+        )}
+        {blocked.length > 0 && <p className="text-xs text-ink-2">{blocked.length} donor{blocked.length === 1 ? "" : "s"} can&apos;t be paid automatically (see the list). Return their share by hand and record it under Record payment.</p>}
+
+        {data.history.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-ink-2">Sent so far ({data.history.length})</summary>
+            <ul className="mt-2 divide-y divide-line">
+              {data.history.map((h) => (
+                <li key={h.id} className="py-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <span>{h.donor} <span className="text-xs text-muted">· {h.account} · {h.method === "refund" ? "refund" : "payout"}{h.live ? "" : " (simulated)"} · {new Date(h.at).toLocaleDateString()} by {h.by}</span></span>
+                  <span className="text-right">
+                    <span className="tnum font-medium">{usd(h.amount)}</span>{" "}
+                    <span className={clsx("text-xs", STATUS[h.status]?.tone)}>{STATUS[h.status]?.label ?? h.status}</span>
+                    {h.error && <span className="block text-xs text-critical">{h.error}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
     </Section>
   );

@@ -6,6 +6,7 @@ import { appendLedger } from "@/lib/ledger";
 import { fmt, toCents } from "@/lib/money";
 import { verifyWebhook } from "@/lib/paypal";
 import { connOf, defaultAccount, DEFAULT_PAYPAL } from "@/lib/paypal-accounts";
+import { applyReturnPayoutEvent } from "@/lib/returns";
 
 type Event = { id: string; event_type: string; resource: Record<string, unknown> & { id?: string } };
 
@@ -49,6 +50,7 @@ export const POST = handle(async (req: Request) => {
             donorEmail: pending.donorEmail,
             donorName: pending.donorName,
             showName: pending.showName,
+            returnOptIn: pending.returnOptIn,
           }).entry,
         );
         break;
@@ -80,10 +82,16 @@ export const POST = handle(async (req: Request) => {
       case "PAYMENT.PAYOUTS-ITEM.FAILED":
       case "PAYMENT.PAYOUTS-ITEM.UNCLAIMED":
       case "PAYMENT.PAYOUTS-ITEM.RETURNED":
-      case "PAYMENT.PAYOUTS-ITEM.BLOCKED": {
+      case "PAYMENT.PAYOUTS-ITEM.BLOCKED":
+      case "PAYMENT.PAYOUTS-ITEM.REFUNDED":
+      case "PAYMENT.PAYOUTS-ITEM.REVERSED": {
         const itemId = (r.payout_item as { sender_item_id?: string } | undefined)?.sender_item_id;
+        const itemStatus = String(r.transaction_status ?? event.event_type.split(".").pop());
         const w = db.withdrawals.find((x) => x.id === itemId);
-        if (w?.payout) w.payout.status = String(r.transaction_status ?? event.event_type.split(".").pop());
+        if (w?.payout) w.payout.status = itemStatus;
+        // A leftover returned to a donor by payout: completed, unclaimed, or back on the fund.
+        const back = itemId ? applyReturnPayoutEvent(db, itemId, itemStatus) : null;
+        if (back) out.push(back);
         break;
       }
       case "CUSTOMER.DISPUTE.CREATED": {

@@ -36,6 +36,7 @@ import * as funds from "./routes/funds/route";
 import * as fundDraft from "./routes/funds/draft/route";
 import * as fund from "./routes/funds/[id]/route";
 import * as fundClose from "./routes/funds/[id]/close/route";
+import * as fundReturns from "./routes/funds/[id]/returns/route";
 import * as fundInsights from "./routes/funds/[id]/insights/route";
 import * as fundLedger from "./routes/funds/[id]/ledger/route";
 import * as webhook from "./routes/paypal/webhook/route";
@@ -74,6 +75,7 @@ const routes: [string, unknown][] = [
   ["/api/funds/draft", fundDraft],
   ["/api/funds/:id", fund],
   ["/api/funds/:id/close", fundClose],
+  ["/api/funds/:id/returns", fundReturns],
   ["/api/funds/:id/codes", fundCodes],
   ["/api/funds/:id/flow", fundFlow],
   ["/api/funds/:id/insights", fundInsights],

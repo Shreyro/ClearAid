@@ -16,5 +16,7 @@ export const GET = handle(async (_req: Request, ctx: Ctx<{ slug: string }>) => {
     ngo: { name: ngo?.name ?? "", country: ngo?.country ?? "" },
     paypal: { live: pp.live, env: pp.env, clientId: pp.live ? pp.clientId : null },
     limits: { min: MIN_GIFT, max: MAX_GIFT },
+    // Whether donors may ask for their share of the leftover back when the fund closes.
+    returns: Boolean(fund.donorReturns),
   });
 });

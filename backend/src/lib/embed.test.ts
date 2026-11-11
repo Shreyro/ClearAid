@@ -17,8 +17,8 @@ const { ALL_FUNDS, payloadFor, buildEmbedPayload, cleanPublish, DEFAULT_PUBLISH,
 const { fundStats } = await import("./funds");
 const { postAllocations } = await import("./banking");
 
-const OFF: EmbedPublish = { totals: false, sources: false, categories: false, payees: "off", flow: false, timeline: false, activity: 0, integrity: false, funds: false };
-const EVERYTHING: EmbedPublish = { totals: true, sources: true, categories: true, payees: "all", flow: true, timeline: true, activity: 25, integrity: true, funds: true };
+const OFF: EmbedPublish = { totals: false, sources: false, categories: false, payees: "off", flow: false, timeline: false, activity: 0, integrity: false, funds: false, donate: false };
+const EVERYTHING: EmbedPublish = { totals: true, sources: true, categories: true, payees: "all", flow: true, timeline: true, activity: 25, integrity: true, funds: true, donate: true };
 const allOf = (p: EmbedPublish) => payloadFor(db, asha.ngoId, { fundId: ALL_FUNDS }, p)!;
 const sum = (rows: { amount: number }[] | undefined) => (rows ?? []).reduce((a, r) => a + r.amount, 0);
 
@@ -98,16 +98,26 @@ test("nothing internal is published, whatever is switched on", () => {
   }
   assert.ok(secrets.size > 300, "the demo data should give plenty to look for");
 
+  // The donate form carries the fund's donation link (its slug), which is public by design; checked on its own below.
+  const PUBLISHED = { ...EVERYTHING, donate: false };
   for (const fund of db.funds) {
-    const text = JSON.stringify(buildEmbedPayload(db, fund, EVERYTHING));
+    const text = JSON.stringify(buildEmbedPayload(db, fund, PUBLISHED));
     for (const s of secrets) assert.ok(!text.includes(s), `"${s}" was published for ${fund.title}`);
     // Times are cut to the day.
     assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*\d{4}-\d{2}-\d{2}T/.test(text), "only asOf may carry a time");
   }
   // The all-funds embed is held to the same rules.
-  const all = JSON.stringify(allOf(EVERYTHING));
+  const all = JSON.stringify(allOf(PUBLISHED));
   for (const x of secrets) assert.ok(!all.includes(x), `"${x}" was published in the all-funds embed`);
   assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*\d{4}-\d{2}-\d{2}T/.test(all), "only asOf may carry a time");
+});
+
+test("the donate form lists only open funds, with what their public donation link already shows", () => {
+  const p = allOf({ ...OFF, donate: true });
+  const open = db.funds.filter((f) => f.ngoId === asha.ngoId && f.status === "active");
+  assert.deepEqual(p.donate!.funds.map((f) => f.slug).sort(), open.map((f) => f.slug).sort());
+  for (const f of p.donate!.funds) assert.deepEqual(Object.keys(f).sort(), ["accent", "code", "returns", "slug", "title"]);
+  assert.equal(buildEmbedPayload(db, asha, OFF).donate, undefined, "off unless switched on");
 });
 
 test("with registered payees only, a bank line's own wording is never shown", () => {

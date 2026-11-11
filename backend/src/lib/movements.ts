@@ -14,6 +14,7 @@ export const TYPE_LABEL: Record<string, string> = {
   withdrawal: "Vendor payout",
   withdrawal_rejected: "Request rejected",
   refund: "Refund",
+  refund_reversed: "Return came back",
   carry_forward_out: "Carried forward out",
   carry_forward_in: "Carried forward in",
   dispute_opened: "Dispute opened",
@@ -71,7 +72,9 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
     via = acc ? `${acc.provider === "plaid" ? "Bank feed" : "Bank statement"} · ${acc.name}` : "Bank";
     if (acc) account = { key: `bank:${acc.id}`, name: acc.name, kind: "bank" };
   } else if (e.type === "refund") {
-    via = "PayPal refund";
+    via = e.memo.includes("PayPal payout") ? "PayPal payout" : "PayPal refund";
+  } else if (e.type === "refund_reversed") {
+    via = "PayPal payout returned";
   } else if (e.type === "expense") {
     const p = db.payments?.find((x) => x.id === e.ref);
     if (p) {

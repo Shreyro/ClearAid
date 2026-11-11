@@ -78,6 +78,18 @@ const sim = (prefix: string) => `SIM-${prefix}-${randomBytes(5).toString("hex").
 export async function createDonationOrder(c: PayPalConn, args: { amount: number; fundId: string; fundTitle: string; reference: string }) {
   if (!c.live) return { id: sim("ORDER"), status: "CREATED", live: false };
   const value = toValue(args.amount);
+  // PayPal only accepts items.category=DONATION from accounts approved for
+  // donations (a 403 otherwise). Ask with it first, and fall back to an
+  // uncategorised item so an ordinary business or sandbox account still works.
+  try {
+    return await placeOrder(c, args, value, true);
+  } catch (e) {
+    if (e instanceof PayPalError && e.status === 403 && /DONATION/i.test(e.message)) return placeOrder(c, args, value, false);
+    throw e;
+  }
+}
+
+async function placeOrder(c: PayPalConn, args: { fundId: string; fundTitle: string; reference: string }, value: string, donationCategory: boolean) {
   const order = await api<{ id: string; status: string }>(c, "/v2/checkout/orders", {
     method: "POST",
     body: {
@@ -97,7 +109,7 @@ export async function createDonationOrder(c: PayPalConn, args: { amount: number;
             {
               name: `Donation: ${args.fundTitle}`.slice(0, 127),
               quantity: "1",
-              category: "DONATION",
+              ...(donationCategory ? { category: "DONATION" } : {}),
               unit_amount: { currency_code: "USD", value },
             },
           ],
@@ -167,22 +179,31 @@ export async function refundCapture(c: PayPalConn, captureId: string, amount: nu
 // --------------------------------------------------------------- Payouts ----
 
 export async function sendVendorPayout(c: PayPalConn, args: { withdrawalId: string; email: string; amount: number; note: string }) {
+  return sendPayout(c, { itemId: args.withdrawalId, email: args.email, amount: args.amount, note: args.note, subject: "ClearAid relief payment", message: "You have received a verified relief payment through ClearAid." });
+}
+
+/**
+ * One payout to one PayPal email. `itemId` is ClearAid's id for it (a vendor
+ * payment or a donor return); PayPal sends it back on the payout's webhook
+ * events, and it makes a retried call harmless (same batch id).
+ */
+export async function sendPayout(c: PayPalConn, args: { itemId: string; email: string; amount: number; note: string; subject: string; message: string }) {
   if (!c.live) return { batchId: sim("PAYOUT"), status: "SUCCESS", live: false };
   const r = await api<{ batch_header: { payout_batch_id: string; batch_status: string } }>(c, "/v1/payments/payouts", {
     method: "POST",
-    idempotencyKey: `payout-${args.withdrawalId}`,
+    idempotencyKey: `payout-${args.itemId}`,
     body: {
       sender_batch_header: {
-        sender_batch_id: `clearaid-${args.withdrawalId}`,
-        email_subject: "ClearAid relief payment",
-        email_message: "You have received a verified relief payment through ClearAid.",
+        sender_batch_id: `clearaid-${args.itemId}`,
+        email_subject: args.subject.slice(0, 255),
+        email_message: args.message.slice(0, 1000),
       },
       items: [
         {
           recipient_type: "EMAIL",
           amount: { value: toValue(args.amount), currency: "USD" },
           note: args.note.slice(0, 4000),
-          sender_item_id: args.withdrawalId,
+          sender_item_id: args.itemId,
           receiver: args.email,
         },
       ],

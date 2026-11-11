@@ -8,6 +8,7 @@ import { sendVendorPayout } from "./paypal";
 import { fundConn } from "./paypal-accounts";
 import type { Category, DB, Donation, Donor, Fund, LedgerEntry, Withdrawal } from "./types";
 import { categoryLabel } from "./types";
+import { owedToDonors } from "./returns";
 
 // ------------------------------------------------------------- Lookups ----
 
@@ -20,7 +21,7 @@ export function donorLabel(donor: Donor | undefined) {
   return `Anonymous donor #${tag}`;
 }
 
-export const donationAvailable = (d: Donation) => d.amount - d.attributed - d.refunded - d.carriedOut;
+export const donationAvailable = (d: Donation) => d.amount - d.attributed - d.refunded - d.carriedOut - (d.returned ?? 0);
 
 const fundLedger = (db: DB, fundId: string) => db.ledger.filter((l) => l.fundId === fundId);
 
@@ -38,7 +39,8 @@ export function fundStats(db: DB, fund: Fund) {
   // Declared payments are signed too: voiding one posts the money back.
   const declaredOut = -signed("expense");
   const spent = sum(["withdrawal"]) + bankOut + declaredOut;
-  const refunded = sum(["refund"]);
+  // Money that came back from a donor return (e.g. an unclaimed payout) is on the fund again.
+  const refunded = sum(["refund"]) - signed("refund_reversed");
   const carriedOut = sum(["carry_forward_out"]);
   const balance = raised - spent - refunded - carriedOut;
 
@@ -128,6 +130,10 @@ export function recordDonation(
     at?: string;
     /** Ledger memo; defaults to a PayPal donation. */
     memo?: string;
+    /** The donor asked for their share of the leftover back when the fund closes. */
+    returnOptIn?: boolean;
+    /** The payer's PayPal email (where a return by payout would go). */
+    payerEmail?: string;
   },
 ) {
   const email = (args.donorEmail || `guest-${args.orderId.toLowerCase()}@donor.local`).toLowerCase();
@@ -147,6 +153,7 @@ export function recordDonation(
     refunded: 0,
     createdAt: args.at ?? nowIso(),
     live: args.live,
+    ...(args.payerEmail ? { payerEmail: args.payerEmail.toLowerCase() } : {}),
   });
   const donation: Donation = {
     id: newId("don"),
@@ -159,6 +166,7 @@ export function recordDonation(
     refunded: 0,
     carriedOut: 0,
     createdAt: args.at ?? nowIso(),
+    ...(args.returnOptIn ? { returnOptIn: true } : {}),
   };
   db.donations.push(donation);
   const entry = appendLedger(db, {
@@ -337,7 +345,10 @@ export function startClosure(fundId: string, actor: string) {
     if (fund.status !== "active") throw new Error("Fund is not active");
     fund.status = "closing";
     fund.closingStartedAt = nowIso();
-    const left = fundStats(db, fund).balance;
+    const stats = fundStats(db, fund);
+    const left = stats.balance;
+    // Donors who asked for their share back get it from this snapshot (see returns.ts).
+    fund.returnBase = { leftover: Math.max(0, left), raised: stats.raised, at: fund.closingStartedAt };
     return appendLedger(db, {
       fundId: fund.id,
       type: "fund_closing",
@@ -366,6 +377,9 @@ function checkTransfers(db: DB, fund: Fund, transfers: LeftoverTransfer[]) {
   const total = transfers.reduce((a, t) => a + t.amount, 0);
   const held = fundStats(db, fund).balance;
   if (total > held) throw new Error(`That is ${fmt(total)}, but only ${fmt(held)} is held`);
+  // Money owed to donors who asked for their share back can't be moved away.
+  const owed = owedToDonors(db, fund);
+  if (owed > 0 && total > held - owed) throw new Error(`${fmt(owed)} is owed to donors who asked for their share back. Send those returns first, or move at most ${fmt(Math.max(0, held - owed))}.`);
   return targets;
 }
 
@@ -457,6 +471,8 @@ export function closurePreview(db: DB, fund: Fund) {
   return {
     held: s.balance,
     movedOut: s.carriedOut,
+    /** Owed to donors who asked for their share back and not sent yet; it can't be moved. */
+    owedToDonors: owedToDonors(db, fund),
     /** Part of the held money that is still-unspent PayPal gifts (the rest came in through the bank). */
     fromDonors: db.donations.filter((d) => d.fundId === fund.id).reduce((a, d) => a + donationAvailable(d), 0),
     targets: leftoverTargets(db, fund).map((f) => ({ id: f.id, title: f.title, slug: f.slug, accent: f.accent })),

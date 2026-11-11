@@ -42,6 +42,7 @@ const TYPE_LABEL: Record<string, string> = {
   expense: "Declared payment",
   withdrawal_rejected: "Request rejected",
   refund: "Refund",
+  refund_reversed: "Return came back",
   carry_forward_out: "Carried forward out",
   carry_forward_in: "Carried forward in",
   dispute_opened: "Dispute opened",

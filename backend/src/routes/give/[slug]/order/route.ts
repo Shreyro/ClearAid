@@ -15,7 +15,7 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ slug: string }>) => {
   const { slug } = await ctx.params;
   const { db, fund, code } = givableFund(slug);
   if (fund.status !== "active") throw new HttpError(400, `${fund.title} isn't taking donations`);
-  const b = (await req.json()) as { amountUsd?: number; name?: string; email?: string; showName?: boolean };
+  const b = (await req.json()) as { amountUsd?: number; name?: string; email?: string; showName?: boolean; returnOptIn?: boolean };
   const amount = toCents(b.amountUsd ?? 0);
   if (!(amount >= MIN_GIFT) || amount > MAX_GIFT) throw new HttpError(400, `Give between ${fmt(MIN_GIFT)} and ${fmt(MAX_GIFT)}`);
   const email = b.email?.trim().slice(0, 120);
@@ -32,6 +32,8 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ slug: string }>) => {
       donorName: b.name?.trim().slice(0, 80) || undefined,
       donorEmail: email || undefined,
       showName: Boolean(b.showName),
+      // Only honoured when the NGO lets donors ask for this on this fund.
+      ...(b.returnOptIn === true && fund.donorReturns ? { returnOptIn: true } : {}),
       createdAt: nowIso(),
       status: "created",
     }),

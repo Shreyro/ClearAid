@@ -9,7 +9,8 @@
     "start": "node --enable-source-maps dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "paypal:check": "tsx --env-file-if-exists=.env scripts/check-paypal.ts"
+    "paypal:check": "tsx --env-file-if-exists=.env scripts/check-paypal.ts",
+    "seed:transactions": "tsx scripts/seed-transactions.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

@@ -38,9 +38,12 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ slug: string }>) => {
       donorEmail: o.donorEmail ?? cap.payerEmail,
       donorName: o.donorName ?? cap.payerName,
       showName: o.showName,
+      returnOptIn: o.returnOptIn,
+      payerEmail: cap.payerEmail,
       memo: `${cap.live ? "Donation via PayPal" : "Donation via PayPal (simulated)"} · donation link${code ? ` · #${code}` : ""}`,
     }).entry;
   });
   if (entry) publish({ kind: "ledger", fundId: fund.id, entry });
-  return json({ ok: true, captureId: cap.captureId, live: cap.live, message: `Thank you. Your ${fmt(cap.amount)} gift to ${fund.title} is on its ledger.` });
+  const asked = order.returnOptIn ? " If money is left when the relief work ends, your share of it will be sent back to you." : "";
+  return json({ ok: true, captureId: cap.captureId, live: cap.live, message: `Thank you. Your ${fmt(cap.amount)} gift to ${fund.title} is on its ledger.${asked}` });
 });

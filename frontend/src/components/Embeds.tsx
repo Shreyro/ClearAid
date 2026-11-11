@@ -19,6 +19,7 @@ type Publish = {
   activity: 0 | 5 | 10 | 25;
   integrity: boolean;
   funds: boolean;
+  donate?: boolean;
 };
 type Embed = {
   id: string;
@@ -46,7 +47,7 @@ const THEMES: { id: EmbedTheme; label: string; hint: string }[] = [
 ];
 
 /** What a new embed starts with: the headline numbers and nothing that names anyone. */
-const START: Publish = { totals: true, sources: true, categories: true, payees: "off", flow: false, timeline: false, activity: 0, integrity: true, funds: true };
+const START: Publish = { totals: true, sources: true, categories: true, payees: "off", flow: false, timeline: false, activity: 0, integrity: true, funds: true, donate: false };
 
 type Switch = "totals" | "sources" | "categories" | "flow" | "timeline" | "integrity";
 const SWITCHES: Record<Switch, { label: string; hint: string }> = {
@@ -58,7 +59,7 @@ const SWITCHES: Record<Switch, { label: string; hint: string }> = {
   integrity: { label: "Ledger integrity proof", hint: "How many entries the ledger has, whether its hash chain verifies, and the latest hash." },
 };
 
-const NEVER = "Never published, whatever you choose: who gave, bank references, account names, tracking codes, staff names, approvals, receipts and the audit log.";
+const NEVER = "Never published, whatever you choose: who gave, bank references, account names, staff names, approvals, receipts and the audit log. Tracking codes appear only with the donate form, which shows the fund's code for bank transfers.";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 /** The iframe title: the fund, or a general name when several are combined. */
@@ -265,7 +266,7 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = <K extends keyof Publish>(k: K, v: Publish[K]) => setPublish((p) => ({ ...p, [k]: v }));
-  const nothing = !publish.totals && !publish.sources && !publish.categories && publish.payees === "off" && !publish.flow && !publish.timeline && !publish.activity && !publish.integrity && !(combined && publish.funds);
+  const nothing = !publish.totals && !publish.sources && !publish.categories && publish.payees === "off" && !publish.flow && !publish.timeline && !publish.activity && !publish.integrity && !(combined && publish.funds) && !publish.donate;
 
   // The preview comes from the server, built by the same code as the public response.
   const settings = JSON.stringify({ publish, allFunds, fundIds: picked });
@@ -372,6 +373,15 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
               <span className="block text-xs text-ink-2 mt-1">Each with its date, type, budget category and amount. The payee is added only if payees are named above.</span>
             </div>
             {check("integrity")}
+            <label className="flex items-start gap-2.5">
+              <input type="checkbox" className="mt-1" checked={Boolean(publish.donate)} onChange={(e) => set("donate", e.target.checked)} />
+              <span>
+                <span className="text-sm font-medium">Donate form (PayPal)</span>
+                <span className="block text-xs text-ink-2">
+                  Visitors give right in the embed. Each gift goes to the fund&apos;s own PayPal account with its tracking code attached, exactly like its donation link{combined ? "; visitors pick which open fund" : ""}. Where the fund lets donors ask for their share of the leftover back, the form offers that too.
+                </span>
+              </span>
+            </label>
             {combined && (
               <label className="flex items-start gap-2.5">
                 <input type="checkbox" className="mt-1" checked={publish.funds} onChange={(e) => set("funds", e.target.checked)} />
@@ -397,7 +407,7 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
           <div className="label">Preview: exactly what the public will see</div>
           {/* Shown on a background like the website's, in the chosen colours. */}
           <div className={clsx("rounded-xl border border-dashed border-line-strong p-3 bg-[var(--page)]", themeClass(theme))}>
-            {noneTicked ? <div className="card p-6 text-sm text-muted">Tick a fund to see the preview.</div> : preview ? <EmbedView data={preview} /> : <div className="card h-64 animate-pulse" />}
+            {noneTicked ? <div className="card p-6 text-sm text-muted">Tick a fund to see the preview.</div> : preview ? <EmbedView data={preview} preview /> : <div className="card h-64 animate-pulse" />}
           </div>
           {theme === "auto" && <p className="text-xs text-muted mt-1">The preview follows your own device&apos;s setting.</p>}
           <p className="text-xs text-muted mt-2">{draft.id ? "Nothing changes on your website until you save." : "Nothing is public until you publish."} The numbers are live from the ledger.</p>

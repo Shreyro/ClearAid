@@ -56,6 +56,7 @@ export function cleanPublish(input: unknown): EmbedPublish {
     activity: ACTIVITY_SIZES.find((n) => n === Number(o.activity)) ?? 0,
     integrity: on("integrity"),
     funds: on("funds"),
+    donate: on("donate"),
   };
 }
 
@@ -72,6 +73,7 @@ export function publishedBlocks(p: EmbedPublish): string[] {
     p.activity > 0 && `latest ${p.activity} movements`,
     p.integrity && "ledger integrity proof",
     p.funds && "each fund's totals",
+    p.donate && "a donate form (PayPal)",
   ].filter((x): x is string => Boolean(x));
 }
 
@@ -198,7 +200,7 @@ function timeline(ledger: LedgerEntry[], startedAt: string) {
     while (i < sorted.length && Date.parse(sorted[i].ts) < dayEnd) {
       const e = sorted[i++];
       if (e.type === "donation" || e.type === "carry_forward_in" || e.type === "bank_in") moneyIn += e.amount;
-      if (e.type === "refund" || e.type === "carry_forward_out") moneyIn += e.amount; // negative: money returned leaves the pot
+      if (e.type === "refund" || e.type === "refund_reversed" || e.type === "carry_forward_out") moneyIn += e.amount; // negative: money returned leaves the pot (a reversal brings it back)
       if (e.type === "withdrawal" || e.type === "bank_out" || e.type === "expense") moneyOut += -e.amount;
     }
     points.push({ date: new Date(start + d * DAY).toISOString().slice(0, 10), in: moneyIn, out: moneyOut });
@@ -222,7 +224,8 @@ function activity(db: DB, fund: Fund, ledger: LedgerEntry[], limit: number, name
     if (e.type === "donation") row.label = e.paypalRef?.startsWith("MANUAL-") ? "Receipt recorded by staff" : "PayPal donation";
     else if (e.type === "carry_forward_in") row.label = "Carried in from another fund";
     else if (e.type === "carry_forward_out") row.label = "Carried to another fund";
-    else if (e.type === "refund") row.label = "Refund to a donor";
+    else if (e.type === "refund") row.label = e.memo.startsWith("Leftover returned") ? "Leftover returned to a donor" : "Refund to a donor";
+    else if (e.type === "refund_reversed") row.label = "Return to a donor came back";
     else if (e.type === "withdrawal") {
       const w = db.withdrawals.find((x) => x.id === e.ref);
       const vendor = w && db.vendors.find((v) => v.id === w.vendorId);
@@ -276,6 +279,11 @@ export interface EmbedPayload {
   integrity?: { valid: boolean; entries: number; head: string | null; ledgers?: number };
   /** Combined embeds: each fund's own totals, largest first. */
   funds?: { title: string; status: Fund["status"]; accent: string; in: number; out: number; held: number }[];
+  /**
+   * The donate form: the published funds still taking donations. Gifts go
+   * through the fund's own donation link (its PayPal account and tracking code).
+   */
+  donate?: { funds: { slug: string; title: string; accent: string; code: string | null; returns: boolean }[] };
 }
 
 /**
@@ -400,6 +408,13 @@ function assemble(db: DB, ngoId: string, funds: Fund[], header: Pick<EmbedPayloa
   }
   if (many && publish.funds) {
     out.funds = stats.map(({ f, s }) => ({ title: f.title, status: f.status, accent: f.accent, in: s.raised, out: s.spent, held: s.balance })).sort((a, b) => b.in - a.in);
+  }
+  if (publish.donate) {
+    out.donate = {
+      funds: funds
+        .filter((f) => f.status === "active")
+        .map((f) => ({ slug: f.slug, title: f.title, accent: f.accent, code: f.trackingCodes?.[0] ?? null, returns: Boolean(f.donorReturns) })),
+    };
   }
   return out;
 }

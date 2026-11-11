@@ -1,4 +1,5 @@
 import { fundAccount } from "./paypal-accounts";
+import { optInCount } from "./returns";
 import { closurePreview, donorLabel, fundStats, requiredApprovals } from "./funds";
 import { activeAssignees, isAssigned, ngoCanSeeFund } from "./session";
 import type { DB, Fund, Session, Withdrawal } from "./types";
@@ -77,6 +78,9 @@ export function fundCard(db: DB, f: Fund) {
     bankIn: s.bankIn,
     bankOut: s.bankOut,
     paypalAccountId: fundAccount(db, f).id,
+    /** Donors may ask for their share of the leftover back, and how many have. */
+    donorReturns: Boolean(f.donorReturns),
+    returnOptIns: optInCount(db, f),
     demo: f.demo,
   };
 }
