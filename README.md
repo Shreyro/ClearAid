@@ -146,3 +146,8 @@ frontend/public/embed.js   optional helper that fits an embed's height on the ho
 - A sample statement for the demo is in `docs/sample-bank-statement.csv`.
 - `render.yaml` still describes the earlier single-service layout.
 - Public embeds are public: the key in an embed's link only keeps it from being found by guessing, so anyone who has the link (or views the page it is on) can read what it shows. "Name every payee" publishes a bank payment's own wording for payees that aren't registered, so check the preview before using it. Embeds are per fund; there is no organisation-wide embed yet.
+
+## Future scope
+
+- **Donor transparency**: let donors see where their money went and choose what to do with any leftover amount after the crisis (refund it, or carry it forward to another fund). The ledger already attributes every payout pro-rata to the donations that funded it and can refund or carry forward leftovers at fund closure; what is missing is a donor sign-in and the screens for it.
+- **AI recommendations for what to publish**: an AI recommendation engine that suggests to the aid admin which data to make public for each fund (for example which embed blocks to switch on), with the admin still making the final choice.
