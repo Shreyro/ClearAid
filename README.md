@@ -116,7 +116,7 @@ python rag/server.py          # listens on 127.0.0.1:8790; the backend fills it 
 
 Without them the rest of the app works; the Copilot page says what's missing (and falls back to keyword search if only FAISS is down).
 
-Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys. `npm test` in `backend/` runs the statement-anonymisation and public-embed tests.
+Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys. `npm test` in `backend/` runs the statement-anonymisation and public-embed tests. A Postman collection that exercises every API route, with its last report, is in `docs/postman/`.
 
 Open http://localhost:3000 and sign in. Everything is behind sign-in except two kinds of page: a fund's donation link (`/give/<fund>`) and the embeds an admin has published (`/embed/<key>`). Passwords are scrypt-hashed and the session cookie is HMAC-signed (set `SESSION_SECRET` in production). The demo logins are listed on the sign-in page:
 
