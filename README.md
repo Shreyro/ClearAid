@@ -1,4 +1,4 @@
-# ClearAid: financial controls for relief NGOs on PayPal
+# ClearAid: Financial Controls for Relief NGOs on PayPal
 
 **Every relief dollar, accounted for.** ClearAid is a governance, risk and compliance (GRC) platform for NGOs running disaster-relief funds on PayPal. Staff see every dollar in and out on a tamper-evident ledger, payouts are AI-audited and need human sign-off from assigned approvers, and every action lands in a hash-chained audit log. It is an internal tool: only NGO staff sign in. The public sees a fund's donation link and whatever figures an admin chooses to publish as an embed, and nothing else.
 
