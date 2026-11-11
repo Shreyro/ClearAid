@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
 import { Access, FundAdmin, Team, Vendors } from "@/components/console";
 import { Controls } from "@/components/Controls";
+import { Embeds } from "@/components/Embeds";
 
 const TABS = [
   { id: "team", label: "Team", admin: false },
@@ -12,6 +13,7 @@ const TABS = [
   { id: "funds", label: "Funds & tracking codes", admin: true },
   { id: "controls", label: "Controls", admin: true },
   { id: "payees", label: "Payees", admin: true },
+  { id: "publish", label: "Public embeds", admin: true },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -34,7 +36,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <Page title="Settings" subtitle={isAdmin ? "People, who can see which fund, funds and their tracking codes, tracking controls (sign-off, receipts, bank fees) and named payees. Every change is written to the audit log." : "Your team and the funds you have access to."}>
+    <Page title="Settings" subtitle={isAdmin ? "People, who can see which fund, funds and their tracking codes, tracking controls (sign-off, receipts, bank fees), named payees and what is published on your website. Every change is written to the audit log." : "Your team and the funds you have access to."}>
       <div className="flex gap-1 border-b border-line mb-6 overflow-x-auto" role="tablist">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => choose(t.id)} className={clsx("px-3 pb-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap", tab === t.id ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink")}>
@@ -47,6 +49,7 @@ export default function SettingsPage() {
       {tab === "funds" && isAdmin && <FundAdmin />}
       {tab === "controls" && isAdmin && <Controls />}
       {tab === "payees" && isAdmin && <Vendors />}
+      {tab === "publish" && isAdmin && <Embeds />}
     </Page>
   );
 }

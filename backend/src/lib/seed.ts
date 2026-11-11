@@ -70,6 +70,7 @@ export function buildSeed(version: number): DB {
     bankAccounts: [],
     statementImports: [],
     bankTxns: [],
+    embeds: [],
   };
 
   // ---------------------------------------------------------------- NGO ----

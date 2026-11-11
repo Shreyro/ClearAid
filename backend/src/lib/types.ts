@@ -353,6 +353,56 @@ export interface DB {
   bankAccounts: BankAccount[];
   statementImports: StatementImport[];
   bankTxns: BankTxn[];
+  /** Public embeds. Missing on data saved before they existed; read through `embedsOf`. */
+  embeds?: PublicEmbed[];
+}
+
+// ------------------------------------------------------- Public embeds ----
+
+/**
+ * What one embed publishes. Each switch is one block of the widget; anything
+ * that isn't switched on here is never put in the public response.
+ */
+export interface EmbedPublish {
+  /** Money in, money out, returned and still held. */
+  totals: boolean;
+  /** Money in by channel (PayPal, bank transfer, …). Never names a payer. */
+  sources: boolean;
+  /** Money out by budget category. */
+  categories: boolean;
+  /**
+   * Money out by payee. "registered" names only payees registered under
+   * Settings → Payees and groups the rest as "Other payees"; "all" names every
+   * payee as it is written on the ledger.
+   */
+  payees: "off" | "registered" | "all";
+  /** Diagram: channels → fund → categories. */
+  flow: boolean;
+  /** Cumulative money in and out, one point per day. */
+  timeline: boolean;
+  /** How many of the latest ledger movements to list. 0 = none. */
+  activity: 0 | 5 | 10 | 25;
+  /** Proof line: number of ledger entries, whether the hash chain verifies, and its head hash. */
+  integrity: boolean;
+}
+
+/** A read-only widget for one fund that any website can show in an iframe. */
+export interface PublicEmbed {
+  id: string;
+  /** Unguessable key in the public URL (/embed/<key>). */
+  key: string;
+  ngoId: string;
+  fundId: string;
+  /** Internal label, e.g. "Website home page". Not shown publicly. */
+  name: string;
+  publish: EmbedPublish;
+  /** Paused embeds answer as if they didn't exist. */
+  enabled: boolean;
+  createdAt: string;
+  createdBy: string;
+  createdByName: string;
+  updatedAt: string;
+  updatedByName: string;
 }
 
 // ------------------------------------------------------------- Banking ----
@@ -544,7 +594,12 @@ export type AuditAction =
   | "bank.tag_rejected"
   | "bank.receipt_added"
   | "ngo.controls_updated"
-  | "fund.codes_updated";
+  | "fund.codes_updated"
+  | "embed.created"
+  | "embed.updated"
+  | "embed.paused"
+  | "embed.resumed"
+  | "embed.deleted";
 
 export interface AuditEntry {
   seq: number;
