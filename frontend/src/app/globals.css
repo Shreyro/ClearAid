@@ -60,6 +60,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Embeds (/embed/<key>) sit inside someone else's page: let that page's background show around the card. */
+html:has(.embed-root),
+html:has(.embed-root) body {
+  background: transparent;
+}
+
 .tnum {
   font-variant-numeric: tabular-nums;
 }

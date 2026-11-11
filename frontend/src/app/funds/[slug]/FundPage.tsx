@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { CalendarDays, Check, ChevronLeft, Copy, Download, ExternalLink, Landmark, Link2, MapPin, Receipt } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, CodeXml, Copy, Download, ExternalLink, Landmark, Link2, MapPin, Receipt } from "lucide-react";
 import clsx from "clsx";
+import { useMe } from "@/components/AppShell";
 import { ago, useJson, useLive, usd } from "@/components/hooks";
 import { Section, Stat, StatusPill } from "@/components/ui";
 import { CategoryBars, MoneyFlowChart } from "@/components/Charts";
@@ -49,6 +50,7 @@ export function FundPage({ slug }: { slug: string }) {
   const { data: flow, reload: reloadFlow } = useJson<Flow>(`/api/funds/${slug}/flow`);
   const { data: ledger, reload: reloadLedger } = useJson<{ entries: LedgerEntry[] }>(`/api/funds/${slug}/ledger`);
   const [view, setView] = useState<"category" | "payee">("payee");
+  const isAdmin = useMe().me.role === "admin";
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -128,6 +130,15 @@ export function FundPage({ slug }: { slug: string }) {
         </div>
 
         <CollectMoney slug={fund.slug} title={fund.title} code={fund.trackingCodes[0]} open={fund.status === "active"} />
+
+        {isAdmin && (
+          <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">
+              <span className="font-semibold">Show this fund on your website.</span> <span className="text-ink-2">Publish the numbers you choose as an embed that stays up to date. Nothing else leaves ClearAid.</span>
+            </p>
+            <Link className="btn btn-ghost" href={`/settings?tab=publish&fund=${fund.id}`}><CodeXml className="h-4 w-4" /> Create an embed</Link>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6">
           <Section title="Money in vs money out">

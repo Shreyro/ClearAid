@@ -31,9 +31,11 @@ const NAV: { href: string; label: string; icon: typeof Waypoints }[] = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { data: sess, reload } = useJson<Sess>("/api/session");
-  const { data: cfg } = useJson<Cfg>("/api/config");
   const path = usePathname();
+  // Public donation links (/give/<fund>) and embeds (/embed/<key>) are for outsiders: no sign-in, no app chrome, no session lookups.
+  const bare = path.startsWith("/give/") || path.startsWith("/embed/");
+  const { data: sess, reload } = useJson<Sess>(bare ? null : "/api/session");
+  const { data: cfg } = useJson<Cfg>(bare ? null : "/api/config");
   // The mobile drawer remembers the page it was opened on, so navigating closes it.
   const [navOpenAt, setNavOpenAt] = useState<string | null>(null);
   const navOpen = navOpenAt === path;
@@ -46,8 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("clearaid:persona", h);
   }, [reload]);
 
-  // Public donation links (/give/<fund>) are for donors: no sign-in, no app chrome.
-  if (path.startsWith("/give/")) return <>{children}</>;
+  if (bare) return <>{children}</>;
   if (!sess) return <div className="min-h-screen grid place-items-center"><div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" aria-label="Loading" /></div>;
   const me = sess.session.member;
   if (sess.session.role !== "ngo" || !me) return <SignIn demoLogins={sess.demoLogins} onSignedIn={reload} />;

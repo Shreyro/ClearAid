@@ -1,6 +1,6 @@
 # ClearAid: financial controls for relief NGOs on PayPal
 
-**Every relief dollar, accounted for.** ClearAid is a governance, risk and compliance (GRC) platform for NGOs running disaster-relief funds on PayPal. Staff see every dollar in and out on a tamper-evident ledger, payouts are AI-audited and need human sign-off from assigned approvers, and every action lands in a hash-chained audit log. It is an internal tool: only NGO staff sign in.
+**Every relief dollar, accounted for.** ClearAid is a governance, risk and compliance (GRC) platform for NGOs running disaster-relief funds on PayPal. Staff see every dollar in and out on a tamper-evident ledger, payouts are AI-audited and need human sign-off from assigned approvers, and every action lands in a hash-chained audit log. It is an internal tool: only NGO staff sign in. The public sees a fund's donation link and whatever figures an admin chooses to publish as an embed, and nothing else.
 
 > Built for the PayPal AI Hackathon. The demo scenario (Cyclone Asha, Coastal Relief Collective and the rest) is fictional.
 
@@ -15,6 +15,7 @@ Relief NGOs move money fast under pressure, and auditors, boards and grant maker
 | Unverified payees | Payouts go only to vendors an admin has verified (KYB) |
 | Altered records | Each fund's ledger and the NGO-wide audit log are SHA-256 hash chains, re-verifiable in the browser |
 | Beneficiary privacy | AI + regex PII redaction on request text; photos with identifiable people stay restricted |
+| Publishing more than intended | Nothing is public by default. An admin picks, block by block, what a fund's embed shows and previews exactly that before it goes live; the public response is built from that list alone, so who gave, staff names, bank references, tracking codes and the audit log can't leak through it. Every change to an embed is audit-logged, and an embed can be paused or deleted at once |
 | Personal data in bank statements | Every bank line is anonymised before it is stored: names of private individuals become stable aliases (`Person-3F9A2C`), and account numbers, phone numbers, emails and ID numbers are redacted. Fixed rules, no AI |
 
 ## Features
@@ -25,7 +26,8 @@ Relief NGOs move money fast under pressure, and auditors, boards and grant maker
 - **Bank accounts**: add accounts for **CSV statement upload** (columns auto-detected, mapping remembered, duplicate files and rows skipped) or connect a bank with **Plaid** (Link + `/transactions/sync`; a simulated bank feed when no Plaid keys are set)
 - **Tracking codes & Bank tagging**: each fund has one or more codes (e.g. `#RO1`, `#ASHA`); a bank line whose description carries one is tagged to that fund and posted to its ledger, optionally with a budget category (`#RO1-MED`). Lines with no code, an unknown code or codes for two funds wait in the **Bank tagging** queue, where staff tag, split, bulk-tag or retag them with a required reason. Bank fees stay in the general fund unless they carry a code. Tagging is rule-based only, never AI
 - **Statement anonymisation**: lines from a CSV upload or a bank feed are anonymised on the way in, before they reach the database, a fund ledger or the audit log. A private person's name is replaced with an alias that stays the same for that person across lines (a keyed hash, so it can't be reversed by guessing), and account / card numbers, UPI handles, phone numbers, emails and ID numbers become placeholders such as `[ACCOUNT ••9301]`. Organisations, registered payees, tracking codes, amounts and the bank's own reference are kept, so the money trail still reads. The upload preview shows the rows as they will be stored (`backend/src/lib/anonymise.ts`)
-- **Audit log**: sign-ins (and failed attempts), signatures, rejections, payouts, access changes, team changes, fund setup, vendor changes, refunds and data exports, with filters, CSV export and in-browser chain verification
+- **Public embeds**: put a fund's figures on any website with an `<iframe>`. Under **Settings → Public embeds** an admin chooses what to publish (totals; money in by channel; spending by category; who was paid, either registered payees only or every payee; a money-flow diagram; money in and out over time; the latest ledger movements; a ledger integrity proof), sees a live preview of exactly what the public will get, and copies the code. The embed keeps itself up to date, fits its own height, works on phones, and can be paused (same link, shows a notice) or deleted. The same figures are available as JSON for sites that want to draw their own (`backend/src/lib/embed.ts`)
+- **Audit log**: sign-ins (and failed attempts), signatures, rejections, payouts, access changes, team changes, fund setup, vendor changes, refunds, data exports and what was published in each embed, with filters, CSV export and in-browser chain verification
 - **Funds & access**: who can approve each fund, join requests (approved by someone other than the requester), AI fund setup and fund closure with pro-rata **partial capture refunds** or carry-forwards
 - **Team**: admins create logins, change roles, reset passwords (which signs the person out everywhere) and deactivate accounts
 - **Copilot**: Claude with ClearAid tools plus the official **PayPal Agent Toolkit** and ledger-vs-PayPal reconciliation. Money-moving actions pause for confirmation, run as the signed-in person, and are audited
@@ -77,6 +79,19 @@ All Claude calls use the official Anthropic TypeScript SDK (`src/lib/ai/`). The 
 
 The AI recommends and humans decide. A failed rule check can never be auto-approved, and every AI feature has a heuristic fallback, so the app runs end to end with no API keys.
 
+## How embedding works
+
+An admin publishes an embed under **Settings → Public embeds** and pastes the generated code into the NGO's website:
+
+```html
+<iframe data-clearaid-embed src="https://your-clearaid.example/embed/KEY" title="Cyclone Asha: where the money goes" loading="lazy" style="width:100%;max-width:760px;height:640px;border:0"></iframe>
+<script async src="https://your-clearaid.example/embed.js"></script>
+```
+
+- The `<iframe>` alone is enough. The optional script only resizes the frame to fit: the embed posts its height to the host page, and the script applies it to frames that came from the same ClearAid site. It reads nothing from the host page.
+- `/embed/KEY` needs no sign-in, doesn't use cookies, and calls one endpoint, `GET /api/embed/KEY`, which returns only the blocks switched on for that embed (CORS is open, since the data is public and no credentials are involved). A paused, deleted or unknown key returns the same 404.
+- Amounts are totals from the fund's ledger; dates are to the day. Who gave, bank references, account names, tracking codes, staff names, approvals, receipts and the audit log are never part of the response, and a bank payment's own wording appears only if the admin chose "Name every payee" (`backend/src/lib/embed.test.ts` checks this against the whole demo data set).
+
 ## Run it
 
 The app is two services: `backend/` (Hono API on port 4000) and `frontend/` (Next.js on port 3000, which proxies `/api/*` to the backend; set `BACKEND_URL` to point elsewhere).
@@ -89,9 +104,9 @@ cd backend && npm install && npm run dev
 cd frontend && npm install && npm run dev
 ```
 
-Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys. `npm test` in `backend/` runs the statement-anonymisation tests.
+Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox and Anthropic keys. `npm test` in `backend/` runs the statement-anonymisation and public-embed tests.
 
-Open http://localhost:3000 and sign in. Everything is behind sign-in; there are no public pages or donor accounts. Passwords are scrypt-hashed and the session cookie is HMAC-signed (set `SESSION_SECRET` in production). The demo logins are listed on the sign-in page:
+Open http://localhost:3000 and sign in. There are no donor accounts, and everything is behind sign-in except two kinds of page: a fund's donation link (`/give/<fund>`) and the embeds an admin has published (`/embed/<key>`). Passwords are scrypt-hashed and the session cookie is HMAC-signed (set `SESSION_SECRET` in production). The demo logins are listed on the sign-in page:
 
 | Username | Password | Role |
 | --- | --- | --- |
@@ -113,11 +128,12 @@ Admins can reset the demo from the sidebar ("Reset demo data").
 ## Project layout
 
 ```
-backend/src/lib/          domain logic (funds, ledger, audit log, banking, anonymise, checks, paypal, session, seed)
+backend/src/lib/          domain logic (funds, ledger, audit log, banking, anonymise, embed, checks, paypal, session, seed)
 backend/src/lib/ai/       Claude: redaction, audit, insights, agents, PayPal Agent Toolkit adapter
-backend/src/routes/       API routes (auth, overview, transactions, audit, funds, withdrawals, ngo/*)
-frontend/src/app/         pages: / (money flow), /transactions, /untagged, /funds, /funds/[slug] (fund trail), /sources, /audit, /settings, /copilot
-frontend/src/components/  AppShell, console (sign-in, queue, access, team, vendors), charts, grids
+backend/src/routes/       API routes (auth, overview, transactions, audit, funds, withdrawals, ngo/*, embeds; public: give/*, embed/*)
+frontend/src/app/         pages: / (money flow), /transactions, /untagged, /funds, /funds/[slug] (fund trail), /sources, /audit, /settings, /copilot; public: /give/[slug] (donation link), /embed/[key] (published figures)
+frontend/src/components/  AppShell, console (sign-in, queue, access, team, vendors), Embeds (admin) and EmbedView (the public widget), charts, grids
+frontend/public/embed.js   optional helper that fits an embed's height on the host page
 ```
 
 ## Known limits (hackathon scope)
@@ -129,3 +145,4 @@ frontend/src/components/  AppShell, console (sign-in, queue, access, team, vendo
 - Statement anonymisation is rule-based. A person's name is recognised in the payee / payer column, or in the description after a payment rail (`NEFT CR Kavya Menon …`), a role word (`beneficiary …`) or a title (`Dr. …`); a name written elsewhere in free text is not. In the payee column, a business with no telling word in its name (Ltd, Traders, Foundation…) that isn't a registered payee is treated as a person. Lines imported before this was added keep their original text, because ledger entries can't be rewritten; "Reset demo data" reseeds the demo anonymised.
 - A sample statement for the demo is in `docs/sample-bank-statement.csv`.
 - `render.yaml` still describes the earlier single-service layout.
+- Public embeds are public: the key in an embed's link only keeps it from being found by guessing, so anyone who has the link (or views the page it is on) can read what it shows. "Name every payee" publishes a bank payment's own wording for payees that aren't registered, so check the preview before using it. Embeds are per fund; there is no organisation-wide embed yet.

@@ -25,6 +25,9 @@ import * as ngoControls from "./routes/ngo/controls/route";
 import * as ngoAssignments from "./routes/ngo/assignments/route";
 import * as ngoMembers from "./routes/ngo/members/route";
 import * as copilot from "./routes/copilot/route";
+import * as embeds from "./routes/embeds/route";
+import * as embedPreview from "./routes/embeds/preview/route";
+import * as publicEmbed from "./routes/embed/[key]/route";
 import * as file from "./routes/files/[id]/route";
 import * as funds from "./routes/funds/route";
 import * as fundDraft from "./routes/funds/draft/route";
@@ -58,6 +61,9 @@ const routes: [string, unknown][] = [
   ["/api/bank/transactions", bankTxns],
   ["/api/bank/transactions/:id/receipts", bankReceipts],
   ["/api/copilot", copilot],
+  ["/api/embed/:key", publicEmbed],
+  ["/api/embeds", embeds],
+  ["/api/embeds/preview", embedPreview],
   ["/api/files/:id", file],
   ["/api/funds", funds],
   ["/api/funds/draft", fundDraft],
@@ -86,7 +92,7 @@ const routes: [string, unknown][] = [
 ];
 
 /** Routes reachable without signing in. */
-const OPEN_ROUTES = new Set(["/api/auth/login", "/api/auth/logout", "/api/session", "/api/config", "/api/paypal/webhook", "/api/give/:slug", "/api/give/:slug/order", "/api/give/:slug/capture"]);
+const OPEN_ROUTES = new Set(["/api/auth/login", "/api/auth/logout", "/api/session", "/api/config", "/api/paypal/webhook", "/api/give/:slug", "/api/give/:slug/order", "/api/give/:slug/capture", "/api/embed/:key"]);
 
 export const app = new Hono();
 app.use(logger());
@@ -97,7 +103,7 @@ for (const [path, mod] of routes) {
     const fn = (mod as RouteModule)[method];
     if (!fn) continue;
     // Run each handler inside the request context so getSession() can read its cookies.
-    // Everything except sign-in, public donation links and PayPal's server-to-server webhook needs an NGO session.
+    // Everything except sign-in, public donation links, published embeds and PayPal's server-to-server webhook needs an NGO session.
     app.on(method, path, (c) =>
       requestContext.run(c.req.raw, async () => {
         if (!OPEN_ROUTES.has(path) && (await getSession()).role !== "ngo") return c.json({ error: "Sign in to continue" }, 401);

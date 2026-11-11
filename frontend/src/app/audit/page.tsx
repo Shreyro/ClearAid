@@ -42,6 +42,7 @@ const CATEGORIES: [string, string][] = [
   ["member", "Team changes"],
   ["fund", "Fund setup"],
   ["vendor", "Vendors"],
+  ["embed", "Public embeds"],
   ["export", "Data exports"],
 ];
 
@@ -56,6 +57,7 @@ const TONE: Record<string, string> = {
   member: "bg-brand-wash text-brand-ink",
   fund: "bg-[#f1ecfb] text-[#5b3d99]",
   vendor: "bg-[#f1ecfb] text-[#5b3d99]",
+  embed: "bg-[#e8f1fc] text-[#1c4f8f]",
   export: "bg-[#efeee9] text-ink-2",
   demo: "bg-[#fbe9e9] text-[#9b2424]",
 };

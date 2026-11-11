@@ -28,16 +28,10 @@ const tick = (cents: number) => {
   return d >= 10000 ? `$${Math.round(d / 1000)}K` : `$${d.toLocaleString()}`;
 };
 
-/**
- * Cumulative money in vs money out. Two series, one axis, crosshair tooltip,
- * legend + direct end labels (dataviz spec: 2px lines, recessive grid).
- */
-export function MoneyFlowChart({ entries, startedAt }: { entries: Entry[]; startedAt: string }) {
-  const [ref, width] = useWidth<HTMLDivElement>();
-  const [hover, setHover] = useState<number | null>(null);
-  const height = 220;
-  const pad = { l: 52, r: 92, t: 12, b: 26 };
+export type FlowPoint = { t: number; raised: number; spent: number };
 
+/** Cumulative money in vs money out for a fund, worked out from its ledger entries. */
+export function MoneyFlowChart({ entries, startedAt }: { entries: Entry[]; startedAt: string }) {
   const points = useMemo(() => {
     const start = Date.parse(startedAt);
     // Span the chart from fund opening to the latest ledger event (keeps render pure).
@@ -63,6 +57,18 @@ export function MoneyFlowChart({ entries, startedAt }: { entries: Entry[]; start
     }
     return out;
   }, [entries, startedAt]);
+  return <CumulativeChart points={points} />;
+}
+
+/**
+ * Running totals of money in and money out. Two series, one axis, crosshair
+ * tooltip, legend + direct end labels (dataviz spec: 2px lines, recessive grid).
+ */
+export function CumulativeChart({ points }: { points: FlowPoint[] }) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const [hover, setHover] = useState<number | null>(null);
+  const height = 220;
+  const pad = { l: 52, r: 92, t: 12, b: 26 };
 
   const iw = width - pad.l - pad.r;
   const ih = height - pad.t - pad.b;

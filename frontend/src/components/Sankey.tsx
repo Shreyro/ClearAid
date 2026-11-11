@@ -14,6 +14,10 @@ const GAP = 10;
 const LABEL_L = 176;
 const LABEL_R = 196;
 const MIN_W = 680;
+// Compact: for a narrow column such as an embed on someone else's page.
+const COMPACT = { labelL: 132, labelR: 176, minW: 560 };
+/** Rough width of one character of a 12.5px label. */
+const CHAR_W = 6.9;
 
 // Destinations that close the flow sit at the bottom: returned money, fees, untagged, then what's still held.
 function destRank(n: FlowNode) {
@@ -32,19 +36,23 @@ type PlacedLink = FlowLink & { d: string; w: number; color: string; key: string 
  * Sources → funds → destinations, with band width proportional to money.
  * Fund nodes carry each fund's identity colour; sources and destinations are
  * neutral so colour always means "which fund". Hover any band or node for
- * exact amounts; click a fund to open its trail.
+ * exact amounts; click a fund to open its trail. `compact` narrows the label
+ * gutters and keeps every label inside its own column.
  */
-export function Sankey({ graph, onFundClick, ariaLabel }: { graph: FlowGraph; onFundClick?: (slug: string) => void; ariaLabel: string }) {
+export function Sankey({ graph, onFundClick, ariaLabel, compact }: { graph: FlowGraph; onFundClick?: (slug: string) => void; ariaLabel: string; compact?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(900);
+  const labelL = compact ? COMPACT.labelL : LABEL_L;
+  const labelR = compact ? COMPACT.labelR : LABEL_R;
+  const minW = compact ? COMPACT.minW : MIN_W;
+  const [width, setWidth] = useState(compact ? COMPACT.minW : 900);
   const [hover, setHover] = useState<{ kind: "link" | "node"; id: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
-    const ro = new ResizeObserver(([e]) => setWidth(Math.max(MIN_W, e.contentRect.width)));
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(minW, e.contentRect.width)));
     ro.observe(ref.current);
     return () => ro.disconnect();
-  }, []);
+  }, [minW]);
 
   const layout = useMemo(() => {
     const byId = new Map<string, Placed>();
@@ -65,7 +73,7 @@ export function Sankey({ graph, onFundClick, ariaLabel }: { graph: FlowGraph; on
     const maxCount = Math.max(...cols.map((c) => c.length), 1);
     const height = Math.max(320, maxCount * 34 + 20);
     const k = Math.min(...cols.filter((c) => c.length).map((c) => (height - GAP * (c.length - 1)) / c.reduce((a, n) => a + n.value, 0)));
-    const xs = [LABEL_L, Math.round((LABEL_L + width - LABEL_R - NODE_W) / 2), width - LABEL_R - NODE_W];
+    const xs = [labelL, Math.round((labelL + width - labelR - NODE_W) / 2), width - labelR - NODE_W];
     cols.forEach((col, ci) => {
       const used = col.reduce((a, n) => a + Math.max(2, n.value * k), 0) + GAP * Math.max(0, col.length - 1);
       let y = (height - used) / 2;
@@ -103,8 +111,8 @@ export function Sankey({ graph, onFundClick, ariaLabel }: { graph: FlowGraph; on
       const color = fund.kind === "untraced" ? UNTRACED : fund.color ?? NEUTRAL;
       return { ...l, w, color, key: `${l.source}→${l.target}`, d: `M${x0},${y0}C${xm},${y0} ${xm},${y1} ${x1},${y1}` };
     });
-    return { nodes: placed, links: placedLinks, height, byId };
-  }, [graph, width]);
+    return { nodes: placed, links: placedLinks, height, byId, xs };
+  }, [graph, width, labelL, labelR]);
 
   if (!layout.nodes.length) return <div className="text-sm text-muted py-10 text-center">No money has moved yet.</div>;
 
@@ -141,7 +149,12 @@ export function Sankey({ graph, onFundClick, ariaLabel }: { graph: FlowGraph; on
           const clickable = n.kind === "fund" && n.slug && onFundClick;
           const amount = usd(n.value, true);
           const big = n.h >= 26;
-          const max = n.column === 1 ? 26 : 30;
+          // A fund's label runs into the space before the next column; never past it.
+          const midRoom = Math.floor((layout.xs[2] - layout.xs[1] - NODE_W - 16) / CHAR_W);
+          const sideRoom = Math.floor(((left ? labelL : labelR) - 14) / CHAR_W);
+          const max = n.column === 1 ? Math.max(6, Math.min(26, midRoom)) : compact ? sideRoom : 30;
+          // In a narrow gutter the amount stays beside a small node only if both fit; it is always in the tooltip.
+          const inlineAmount = !big && (!compact || n.label.length + amount.length + 3 <= max);
           return (
             <g
               key={n.id}
@@ -157,7 +170,7 @@ export function Sankey({ graph, onFundClick, ariaLabel }: { graph: FlowGraph; on
               {/* Halo keeps mid-column labels legible over the bands. */}
               <text x={tx} y={big ? cy - 3 : cy + 4} textAnchor={anchor} fontSize={12.5} fontWeight={n.kind === "fund" ? 600 : 500} fill="var(--ink)" stroke={n.column === 1 ? "var(--surface)" : undefined} strokeWidth={n.column === 1 ? 4 : undefined} paintOrder="stroke" className={clickable ? "underline-offset-2 hover:underline" : undefined}>
                 {clip(n.label, max)}
-                {!big && <tspan fill="var(--muted)" fontWeight={400}> · {amount}</tspan>}
+                {inlineAmount && <tspan fill="var(--muted)" fontWeight={400}> · {amount}</tspan>}
               </text>
               {big && (
                 <text x={tx} y={cy + 12} textAnchor={anchor} fontSize={11} fill="var(--muted)" stroke={n.column === 1 ? "var(--surface)" : undefined} strokeWidth={n.column === 1 ? 4 : undefined} paintOrder="stroke" className="tnum">
