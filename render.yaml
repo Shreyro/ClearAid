@@ -23,10 +23,9 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: ZAPIER_WEBHOOK_URL
-        sync: false
+      # No Ollama on Render: AI features use their non-AI fallbacks.
+      - key: LOCAL_AI
+        value: "off"
       - key: APP_URL # the clearaid-web URL (PayPal return URLs, links in outbound webhooks)
         sync: false
 

@@ -1,16 +1,17 @@
-import fs from "node:fs";
-import path from "node:path";
-import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod/v4";
 import { aiEnabled } from "../config";
-import { getDb, mutate, nowIso, uploadsDir } from "../db";
+import { getDb, mutate, nowIso } from "../db";
 import { AI_ACTOR, audit as appendAudit } from "../audit";
 import { ruleChecks, rulesRisk } from "../checks";
 import { findFund, payWithdrawal, requiredApprovals } from "../funds";
 import { publish } from "../events";
 import { fmt } from "../money";
-import { categoryLabel, type AuditResult, type StoredFile } from "../types";
-import { MODEL, structured } from "./client";
+import { categoryLabel, type AuditResult } from "../types";
+import { imageOf, structured } from "./local";
+import { readText } from "./ocr";
+
+/** Small local vision models do best with a few images at a time. */
+const MAX_IMAGES = 4;
 
 const AuditSchema = z.object({
   receipt: z.object({
@@ -64,22 +65,6 @@ Work through:
 
 Add your own checks (do not repeat the rule checks verbatim). Be calibrated: legitimate, well-documented requests should score below 25 and be approved. Missing or contradictory evidence should be needs_review. Clear fraud signals should be reject. Your output is a recommendation; NGO staff make the final decision.`;
 
-function readFileBlock(f: StoredFile): Anthropic.Beta.BetaContentBlockParam | null {
-  const p = path.join(uploadsDir(), f.id);
-  if (!fs.existsSync(p)) return null;
-  const data = fs.readFileSync(p).toString("base64");
-  if (f.mime === "application/pdf") {
-    return { type: "document", source: { type: "base64", media_type: "application/pdf", data } };
-  }
-  if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(f.mime)) {
-    return {
-      type: "image",
-      source: { type: "base64", media_type: f.mime as "image/jpeg" | "image/png" | "image/webp" | "image/gif", data },
-    };
-  }
-  return null;
-}
-
 export async function auditWithdrawal(withdrawalId: string): Promise<{ audit: AuditResult; receiptPrivate: boolean }> {
   const db = getDb();
   const w = db.withdrawals.find((x) => x.id === withdrawalId)!;
@@ -109,7 +94,7 @@ export async function auditWithdrawal(withdrawalId: string): Promise<{ audit: Au
           id: "ai_unavailable",
           label: "AI document audit",
           status: "warn",
-          detail: "Set ANTHROPIC_API_KEY to enable receipt extraction and photo verification",
+          detail: "Local AI is switched off (LOCAL_AI=off), so receipts and photos weren't checked automatically",
           source: "ai",
         },
       ],
@@ -138,18 +123,41 @@ export async function auditWithdrawal(withdrawalId: string): Promise<{ audit: Au
     photoMetadata: photos.map((p, i) => ({ index: i, exif: p.exif ?? null })),
   };
 
-  const content: Anthropic.Beta.BetaContentBlockParam[] = [];
-  receipts.forEach((r, i) => {
-    const block = readFileBlock(r);
-    if (block) content.push({ type: "text", text: `Receipt ${i + 1} (${r.name}):` }, block);
-  });
+  // Receipts are read as text (OCR, or a PDF's text layer), as in FairShare, so the main model audits them.
+  // Only a receipt OCR couldn't read, and the delivery photos, go to the vision model as images.
+  const texts: string[] = [];
+  const images: string[] = [];
+  const shown: string[] = [];
+  for (const [i, r] of receipts.entries()) {
+    const read = await readText(r);
+    if (read) {
+      texts.push(`Receipt ${i + 1} (${r.name}), text read from the document:\n---\n${read.text.slice(0, 4000)}\n---`);
+      continue;
+    }
+    const img = images.length < MAX_IMAGES ? imageOf(r) : null;
+    if (img) {
+      images.push(img);
+      shown.push(`Image ${images.length}: receipt ${i + 1} (${r.name})`);
+    }
+  }
   photos.forEach((p, i) => {
-    const block = readFileBlock(p);
-    if (block) content.push({ type: "text", text: `Proof photo index ${i} (${p.name}):` }, block);
+    const img = images.length < MAX_IMAGES ? imageOf(p) : null;
+    if (img) {
+      images.push(img);
+      shown.push(`Image ${images.length}: proof photo index ${i} (${p.name})`);
+    }
   });
-  content.push({ type: "text", text: `Withdrawal request context:\n${JSON.stringify(ctx, null, 2)}\n\nAudit this request.` });
+  const unseen = receipts.length + photos.length - images.length - texts.length;
+  const prompt = [
+    ...texts,
+    shown.length ? `Attached images, in order:\n${shown.join("\n")}` : photos.length ? "The delivery photos couldn't be attached; say they still need a human look." : "",
+    !texts.length && !shown.length ? "No documents could be read; judge from the request and the rule checks, and say the documents still need a human look." : "",
+    unseen > 0 ? `${unseen} other document(s) (PDFs or extra images) weren't attached; don't assume what they show.` : "",
+    `Withdrawal request context:\n${JSON.stringify(ctx, null, 2)}`,
+    "Audit this request.",
+  ].filter(Boolean).join("\n\n");
 
-  const out = await structured({ schema: AuditSchema, system: SYSTEM, content, effort: "medium", maxTokens: 12000 });
+  const { data: out, model } = await structured({ schema: AuditSchema, system: SYSTEM, prompt, images, maxTokens: 3000 });
 
   const hardFail = rules.some((c) => c.status === "fail");
   const risk = Math.round(Math.min(100, Math.max(out.riskScore, rRisk)));
@@ -157,8 +165,8 @@ export async function auditWithdrawal(withdrawalId: string): Promise<{ audit: Au
   if (hardFail && verdict === "approve") verdict = "needs_review";
 
   const audit: AuditResult = {
-    engine: "claude",
-    model: MODEL(),
+    engine: "local",
+    model,
     ranAt: nowIso(),
     riskScore: risk,
     verdict,
@@ -249,7 +257,7 @@ export async function runAudit(withdrawalId: string) {
     const fast =
       p.fastLaneMax > 0 &&
       w.amount <= p.fastLaneMax &&
-      audit.engine === "claude" &&
+      audit.engine === "local" &&
       audit.verdict === "approve" &&
       audit.riskScore <= p.fastLaneMaxRisk &&
       clean &&

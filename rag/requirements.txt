@@ -1,2 +1,5 @@
 faiss-cpu>=1.8
 numpy>=1.26
+# Receipt and invoice reading (POST /ocr). Optional: without them /ocr says so and the backend falls back.
+easyocr>=1.7
+pymupdf>=1.24

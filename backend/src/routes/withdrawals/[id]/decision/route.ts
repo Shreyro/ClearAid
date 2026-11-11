@@ -1,4 +1,4 @@
-import { decideWithdrawal } from "@/lib/ai/agents";
+import { decideWithdrawal } from "@/lib/withdrawals";
 import { type Ctx, handle, json } from "@/lib/http";
 import { requireNgo } from "@/lib/session";
 

@@ -4,7 +4,7 @@ import { getDb, mutate, nowIso } from "../db";
 import { findFund, fundStats } from "../funds";
 import { fmt } from "../money";
 import { CATEGORIES, categoryLabel, type Category, type FundInsights, type FundPolicy, type Need } from "../types";
-import { structured } from "./client";
+import { structured } from "./local";
 
 const InsightSchema = z.object({
   headline: z.string().describe("One punchy, factual sentence (max 14 words)"),
@@ -70,15 +70,14 @@ export async function generateInsights(fundId: string): Promise<FundInsights> {
   else {
     try {
       const { data } = snapshot(fundId);
-      const r = await structured({
+      const { data: r } = await structured({
         schema: InsightSchema,
         system:
           "You write the 'Crisis insights' panel on a public disaster-relief fund page. Readers are donors who want to know, in plain language, where their money went, what is still needed and whether anything looks wrong. Use only the data provided; never invent numbers. Prefer specific numbers and items over adjectives. Use US dollars.",
-        content: `Fund data (JSON):\n${JSON.stringify(data, null, 2)}`,
-        effort: "medium",
-        maxTokens: 4000,
+        prompt: `Fund data (JSON):\n${JSON.stringify(data, null, 2)}`,
+        maxTokens: 1500,
       });
-      out = { engine: "claude", generatedAt: nowIso(), ...r };
+      out = { engine: "local", generatedAt: nowIso(), ...r };
     } catch {
       out = heuristic(fundId);
     }
@@ -124,19 +123,18 @@ export type FundDraft = {
   lng: number;
   needs: Omit<Need, "id" | "fulfilledQty">[];
   categoryCaps: FundPolicy["categoryCaps"];
-  engine: "claude" | "template";
+  engine: "local" | "template";
 };
 
 export async function draftFund(brief: string): Promise<FundDraft> {
   if (aiEnabled()) {
     try {
-      const d = await structured({
+      const { data: d } = await structured({
         schema: DraftSchema,
         system:
           "You help NGO staff set up a transparent disaster-relief fund. From a short brief, propose a realistic fund: a public title and description, a USD goal, a needs list (5-8 items) with quantities and typical local unit costs, and per-category spending caps as a % of funds raised (admin should be 5-10%). Ground estimates in typical humanitarian cluster standards (e.g. Sphere) for the region and be conservative.",
-        content: brief,
-        effort: "medium",
-        maxTokens: 6000,
+        prompt: brief,
+        maxTokens: 2500,
       });
       return {
         title: d.title,
@@ -148,7 +146,7 @@ export async function draftFund(brief: string): Promise<FundDraft> {
         lng: d.lng,
         needs: d.needs.map((n) => ({ item: n.item, category: n.category, unit: n.unit, targetQty: Math.round(n.targetQty), unitCost: Math.round(n.unitCostUsd * 100) })),
         categoryCaps: Object.fromEntries(d.categoryCapsPct.map((c) => [c.category, Math.round(c.maxPct)])),
-        engine: "claude",
+        engine: "local",
       };
     } catch {
       /* fall back to template */

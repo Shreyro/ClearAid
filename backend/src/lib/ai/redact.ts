@@ -1,10 +1,10 @@
 import { z } from "zod/v4";
-import { structured } from "./client";
+import { structured } from "./local";
 
 export interface Redaction {
   text: string;
   found: { type: string; count: number }[];
-  engine: "claude" | "rules";
+  engine: "local" | "rules";
 }
 
 // Deterministic first pass. Always runs, so obvious identifiers never reach
@@ -48,10 +48,10 @@ Keep (do not redact): organisation and vendor business names, item names and qua
 export async function redactPII(input: string): Promise<Redaction> {
   const first = ruleRedact(input);
   try {
-    const out = await structured({ schema: Schema, system: SYSTEM, content: first.text, effort: "low", maxTokens: 2000 });
+    const { data: out } = await structured({ schema: Schema, system: SYSTEM, prompt: first.text, maxTokens: 1500 });
     const merged = new Map(first.found.map((f) => [f.type, f.count]));
     for (const e of out.entities) merged.set(e.type, Math.max(merged.get(e.type) ?? 0, e.count));
-    return { text: out.redacted, found: [...merged].map(([type, count]) => ({ type, count })), engine: "claude" };
+    return { text: out.redacted, found: [...merged].map(([type, count]) => ({ type, count })), engine: "local" };
   } catch {
     return first;
   }

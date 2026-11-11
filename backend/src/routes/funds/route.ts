@@ -7,7 +7,7 @@ import { handle, json } from "@/lib/http";
 import { appendLedger } from "@/lib/ledger";
 import { fmt, toCents } from "@/lib/money";
 import { getSession, requireNgoAdmin, visibleFunds } from "@/lib/session";
-import type { Category, Fund } from "@/lib/types";
+import { CATEGORIES, type Category, type Fund } from "@/lib/types";
 import { fundCard } from "@/lib/views";
 
 /** Funds the signed-in member can see: all of them for admins, assigned ones for staff. */
@@ -42,6 +42,8 @@ interface CreateBody {
   leftoverDefault: "refund" | "carry_forward";
   carryForwardFundId?: string;
   trackingCodes?: string[];
+  /** Let donors ask for their share of the leftover back when the fund closes. */
+  donorReturns?: boolean;
 }
 
 export const POST = handle(async (req: Request) => {
@@ -81,13 +83,14 @@ export const POST = handle(async (req: Request) => {
         fastLaneMaxRisk: 20,
         leftoverDefault: b.leftoverDefault === "refund" ? "refund" : "carry_forward",
       },
-      needs: (b.needs ?? []).map((n) => ({
+      // Rows left blank on the form are skipped.
+      needs: (b.needs ?? []).filter((n) => n.item?.trim() && n.unit?.trim() && CATEGORIES.some((c) => c.id === n.category)).map((n) => ({
         id: newId("need"),
-        item: n.item,
+        item: n.item.trim(),
         category: n.category,
-        unit: n.unit,
-        targetQty: Math.max(1, Math.round(n.targetQty)),
-        unitCost: toCents(n.unitCostUsd),
+        unit: n.unit.trim(),
+        targetQty: Math.max(1, Math.round(Number(n.targetQty) || 1)),
+        unitCost: Math.max(0, toCents(Number(n.unitCostUsd) || 0)),
         fulfilledQty: 0,
       })),
       vendorIds: db.vendors.filter((v) => v.verified && v.ngoId === admin.ngoId).map((v) => v.id),
@@ -95,6 +98,7 @@ export const POST = handle(async (req: Request) => {
       assignees: [admin.id],
       trackingCodes: codes,
       carryForwardFundId: b.carryForwardFundId || undefined,
+      ...(b.donorReturns === true ? { donorReturns: true } : {}),
       accent: ["#0f766e", "#4338ca", "#b45309", "#be123c", "#0369a1"][db.funds.length % 5],
     };
     db.funds.push(f);

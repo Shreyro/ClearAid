@@ -10599,18 +10599,6 @@
     "markUrl": "https://www.youtube.com/"
   },
   {
-    "file": "zapier.svg",
-    "icon": "logos:zapier",
-    "name": "Zapier",
-    "kind": "colour",
-    "source": "gilbarbara/logos@d6960edc1b7309d392c76e40d3a320df7f9ff85c",
-    "author": "Gil Barbara",
-    "licence": "CC0-1.0",
-    "url": "https://github.com/gilbarbara/logos",
-    "trademark": true,
-    "markUrl": "https://zapier.com/"
-  },
-  {
     "file": "zendesk.svg",
     "icon": "logos:zendesk-icon",
     "name": "Zendesk",

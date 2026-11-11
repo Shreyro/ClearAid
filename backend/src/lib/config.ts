@@ -12,22 +12,28 @@ export const config = {
     secret: process.env.PLAID_SECRET?.trim() || "",
     env: (process.env.PLAID_ENV === "production" ? "production" : "sandbox") as "production" | "sandbox",
   },
-  anthropicKey: process.env.ANTHROPIC_API_KEY?.trim() || "",
-  claudeModel: process.env.CLAUDE_MODEL?.trim() || "claude-opus-5-5",
-  zapierWebhookUrl: process.env.ZAPIER_WEBHOOK_URL?.trim() || "",
   dataDir: path.resolve(process.env.DATA_DIR || ".data"),
   appUrl: process.env.APP_URL || "http://localhost:3000",
-  /** Local Copilot: Ollama for the answering model, the rag/ service for FAISS search. */
+  /**
+   * All AI runs locally: Ollama serves one model for everything (the Copilot,
+   * fund drafts, insights, redaction, audits), plus a vision model only for
+   * reading images when that model can't. The rag/ service does FAISS search.
+   */
   local: {
+    /** LOCAL_AI=off switches every AI feature to its non-AI fallback. */
+    ai: process.env.LOCAL_AI?.trim().toLowerCase() !== "off",
     ollamaUrl: (process.env.OLLAMA_URL?.trim() || "http://127.0.0.1:11434").replace(/\/$/, ""),
     model: process.env.COPILOT_MODEL?.trim() || "llama3.1:8b",
+    /** Used only for receipts and photos, and only if the main model can't see images. */
+    visionModel: process.env.LOCAL_VISION_MODEL?.trim() || "llava",
     ragUrl: (process.env.RAG_URL?.trim() || "http://127.0.0.1:8790").replace(/\/$/, ""),
     ragToken: process.env.RAG_TOKEN?.trim() || "",
   },
 };
 
 export const paypalLive = () => Boolean(config.paypal.clientId && config.paypal.clientSecret);
-export const aiEnabled = () => Boolean(config.anthropicKey);
+/** Whether AI features try the local model (each still falls back if Ollama is down). */
+export const aiEnabled = () => config.local.ai;
 
 export const paypalApiBase = () =>
   config.paypal.env === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";

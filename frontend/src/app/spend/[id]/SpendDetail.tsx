@@ -107,14 +107,14 @@ export function SpendDetail({ id }: { id: string }) {
             title={<span className="flex items-center gap-2"><Bot className="h-4 w-4 text-brand" /> AI audit report</span>}
             action={
               a && (
-                <Pill tone={a.engine === "claude" ? "brand" : "neutral"}>
-                  {a.seeded ? "Sample audit (demo data)" : a.engine === "claude" ? `Claude · ${a.model}` : "Rules only (no AI key)"}
+                <Pill tone={a.engine === "local" || a.engine === "claude" ? "brand" : "neutral"}>
+                  {a.seeded ? "Sample audit (demo data)" : a.engine === "local" ? `Local model · ${a.model}` : a.engine === "claude" ? `Claude · ${a.model}` : "Rules only (local AI unavailable)"}
                 </Pill>
               )
             }
           >
             {!a ? (
-              <div className="flex items-center gap-2 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin" /> Claude is reading the receipt and checking the photos…</div>
+              <div className="flex items-center gap-2 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin" /> The local model is reading the receipt and checking the photos…</div>
             ) : (
               <>
                 <div className="flex items-center gap-4">

@@ -43,7 +43,7 @@ type ReceiptRec = {
   fileId: string;
   fileName: string;
   url: string;
-  engine: "claude" | "none";
+  engine: "local" | "claude" | "none";
   extraction?: { supplier: string | null; invoiceNumber: string | null; date: string | null; currency: string | null; total: number | null; printedCode: string | null; legible: boolean };
   match: { score: number; signals: string[] };
   codeMismatch?: string;
@@ -561,7 +561,7 @@ function ReceiptsPanel({ t, onChanged }: { t: Txn; onChanged: (m: string) => Pro
       </div>
       {t.receipts.length === 0 ? (
         <p className="text-xs text-muted mt-1">
-          Attach the invoice or bill behind this {t.amount < 0 ? "payment" : "receipt"} (image or PDF, up to 8 MB). Claude reads it and a fixed rule checks it against the amount, date and payee. It never changes the tag.
+          Attach the invoice or bill behind this {t.amount < 0 ? "payment" : "receipt"} (image or PDF, up to 8 MB). It's read on this machine (OCR, then the local AI model), and a fixed rule checks it against the amount, date and payee. It never changes the tag.
         </p>
       ) : (
         <ul className="mt-2 grid md:grid-cols-2 gap-2">

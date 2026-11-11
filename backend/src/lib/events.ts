@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import { config } from "./config";
 import type { LedgerEntry } from "./types";
 
 export type BusEvent =
@@ -20,18 +19,4 @@ export const bus: EventEmitter = (g.__clearaidBus ??= (() => {
 
 export function publish(ev: BusEvent) {
   bus.emit("event", ev);
-  if (ev.kind === "ledger" && config.zapierWebhookUrl) {
-    // Fire-and-forget fan-out (Zapier "Catch Hook", Make, n8n, Slack workflow…)
-    fetch(config.zapierWebhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "clearaid",
-        event: `ledger.${ev.entry.type}`,
-        fundUrl: `${config.appUrl}/funds/${ev.fundId}`,
-        ...ev.entry,
-        amountUsd: (ev.entry.amount / 100).toFixed(2),
-      }),
-    }).catch(() => undefined);
-  }
 }

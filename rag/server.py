@@ -11,6 +11,7 @@ Endpoints (JSON):
   GET  /health                         -> model, index sizes
   POST /sync    {indexes: {name: [{id, text, meta}]}, prune: bool}
   POST /search  {indexes: [name], query, k}
+  POST /ocr     {data: base64, mime}  -> {text, engine}   (receipts/invoices, see ocr.py)
 
 Run:  python rag/server.py        (env: RAG_PORT, RAG_DATA, OLLAMA_URL, EMBED_MODEL, RAG_TOKEN)
 """
@@ -26,6 +27,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import faiss
 import numpy as np
+
+import ocr
 
 PORT = int(os.environ.get("RAG_PORT", "8790"))
 HOST = os.environ.get("RAG_HOST", "127.0.0.1")
@@ -150,7 +153,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             # No lock: a sync can hold it for minutes while it embeds, and health must still answer.
             sizes = {name: len(ix["docs"]) for name, ix in list(indexes.items())}
-            return self._send(200, {"ok": True, "embedModel": EMBED_MODEL, "indexes": sizes, "vectors": len(cache)})
+            return self._send(200, {"ok": True, "embedModel": EMBED_MODEL, "indexes": sizes, "vectors": len(cache), "ocr": ocr.available()})
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -162,6 +165,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, self.sync(b))
             if self.path == "/search":
                 return self._send(200, self.search(b))
+            if self.path == "/ocr":
+                # Not under the index lock: OCR can take a few seconds and has its own.
+                return self._send(200, ocr.read(str(b.get("data") or ""), str(b.get("mime") or "")))
             self._send(404, {"error": "not found"})
         except RuntimeError as e:
             self._send(503, {"error": str(e)})

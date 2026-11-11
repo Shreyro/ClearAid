@@ -40,6 +40,8 @@ type Body =
       force?: boolean;
     }
   | { action: "unlink"; id?: string }
+  /** Add the receipt or invoice to a payment recorded without one. */
+  | { action: "attach"; id?: string; fileId?: string }
   | { action: "void"; id?: string; reason?: string };
 
 /**
@@ -71,10 +73,9 @@ export const POST = handle(async (req: Request) => {
     const invoiceNumber = b.invoiceNumber?.trim().slice(0, 60) || undefined;
 
     const res = mutate((db) => {
-      const file = db.files.find((f) => f.id === b.fileId && f.kind === "receipt" && !f.public && f.scan?.ngoId === me.ngoId);
-      if (!file) throw new HttpError(400, "Upload the receipt or invoice first");
-      if (paymentsOf(db).some((p) => p.receipt?.fileId === file.id && p.status !== "void")) throw new HttpError(409, "This receipt was already used for another payment");
-      const scan = file.scan;
+      // The receipt is optional (entered by hand); it can be attached later.
+      const file = b.fileId ? receiptFile(db, me.ngoId, b.fileId) : undefined;
+      const scan = file?.scan;
 
       // The ledger is readable by donors, so a private person's name is replaced, the same way bank lines are.
       const shown = statementAnonymiser(db, me.ngoId)({ date: b.date!, amount: -amount, description, counterparty: payee });
@@ -91,7 +92,7 @@ export const POST = handle(async (req: Request) => {
         description,
         publicPayee: shown.counterparty || payee,
         publicDescription: shown.description,
-        receipt: { fileId: file.id, engine: scan?.engine ?? "none", extraction: scan?.extraction, note: scan?.note, edited: editedFields(scan?.extraction, { amount, payee, date: b.date!, invoiceNumber }) },
+        ...(file ? { receipt: { fileId: file.id, engine: scan?.engine ?? "none", extraction: scan?.extraction, note: scan?.note, edited: editedFields(scan?.extraction, { amount, payee, date: b.date!, invoiceNumber }) } } : {}),
         status: expectsBankLine(method) ? "awaiting_bank" : "no_bank",
         byId: me.id,
         byName: me.name,
@@ -117,8 +118,8 @@ export const POST = handle(async (req: Request) => {
           action: "payment.recorded",
           fundId: fund.id,
           targetId: p.id,
-          summary: `Declared a ${fmt(amount)} ${PAYMENT_METHODS[method].toLowerCase()} payment to ${p.publicPayee} from ${fund.title}: ${p.publicDescription}${p.receipt?.edited?.length ? ` (changed from the receipt: ${p.receipt.edited.join(", ")})` : ""}${free ? " · matched to its bank line" : " · waiting for its bank line"}`,
-          meta: { amount, method, sha256: file.sha256, ...(invoiceNumber ? { invoiceNumber } : {}) },
+          summary: `Declared a ${fmt(amount)} ${PAYMENT_METHODS[method].toLowerCase()} payment to ${p.publicPayee} from ${fund.title}: ${p.publicDescription}${p.receipt?.edited?.length ? ` (changed from the receipt: ${p.receipt.edited.join(", ")})` : ""}${file ? "" : " · entered by hand, no receipt attached yet"}${free ? " · matched to its bank line" : " · waiting for its bank line"}`,
+          meta: { amount, method, ...(file ? { sha256: file.sha256 } : {}), ...(invoiceNumber ? { invoiceNumber } : {}) },
         });
         return { p, entry };
       }
@@ -129,8 +130,8 @@ export const POST = handle(async (req: Request) => {
         action: "payment.recorded",
         fundId: fund.id,
         targetId: p.id,
-        summary: `Declared a ${fmt(amount)} ${PAYMENT_METHODS[method].toLowerCase()} payment to ${p.publicPayee} from ${fund.title}: ${p.publicDescription}${p.receipt?.edited?.length ? ` (changed from the receipt: ${p.receipt.edited.join(", ")})` : ""}`,
-        meta: { amount, method, sha256: file.sha256, ...(invoiceNumber ? { invoiceNumber } : {}) },
+        summary: `Declared a ${fmt(amount)} ${PAYMENT_METHODS[method].toLowerCase()} payment to ${p.publicPayee} from ${fund.title}: ${p.publicDescription}${p.receipt?.edited?.length ? ` (changed from the receipt: ${p.receipt.edited.join(", ")})` : ""}${file ? "" : " · entered by hand, no receipt attached yet"}`,
+        meta: { amount, method, ...(file ? { sha256: file.sha256 } : {}), ...(invoiceNumber ? { invoiceNumber } : {}) },
       });
       return { p, entry };
     });
@@ -146,6 +147,29 @@ export const POST = handle(async (req: Request) => {
             ? "Recorded. It'll be matched when its bank line comes in, so it isn't counted twice."
             : "Recorded",
     });
+  }
+
+  if (b.action === "attach") {
+    const message = mutate((db) => {
+      const p = paymentsOf(db).find((x) => x.id === b.id && x.ngoId === me.ngoId);
+      if (!p || !mayRecord(db, me, p.fundId)) throw new HttpError(404, "Payment not found");
+      if (p.status === "void") throw new HttpError(400, "This payment was voided");
+      if (p.receipt) throw new HttpError(400, "This payment already has its receipt");
+      const file = receiptFile(db, me.ngoId, b.fileId ?? "");
+      const scan = file.scan;
+      p.receipt = { fileId: file.id, engine: scan?.engine ?? "none", extraction: scan?.extraction, note: scan?.note, edited: editedFields(scan?.extraction, { amount: p.amount, payee: p.payee, date: p.date, invoiceNumber: p.invoiceNumber }) };
+      const differs = p.receipt.edited?.length ? ` The receipt differs on: ${p.receipt.edited.join(", ")}.` : "";
+      audit(db, {
+        actor,
+        action: "payment.receipt_attached",
+        fundId: p.fundId,
+        targetId: p.id,
+        summary: `Attached the receipt to the ${fmt(p.amount)} payment to ${p.publicPayee} (${p.date}), which was entered by hand.${differs}`,
+        meta: { amount: p.amount, sha256: file.sha256 },
+      });
+      return `Receipt attached.${differs}`;
+    });
+    return json({ ok: true, message });
   }
 
   if (b.action === "unlink" || b.action === "void") {
@@ -189,6 +213,14 @@ export const POST = handle(async (req: Request) => {
   }
   throw new HttpError(400, "Unknown action");
 });
+
+/** An uploaded receipt of this NGO that no other live payment uses yet. */
+function receiptFile(db: DB, ngoId: string, fileId: string) {
+  const file = db.files.find((f) => f.id === fileId && f.kind === "receipt" && !f.public && f.scan?.ngoId === ngoId);
+  if (!file) throw new HttpError(400, "Upload the receipt or invoice first");
+  if (paymentsOf(db).some((p) => p.receipt?.fileId === file.id && p.status !== "void")) throw new HttpError(409, "This receipt was already used for another payment");
+  return file;
+}
 
 function editedFields(x: NonNullable<DeclaredPayment["receipt"]>["extraction"] | undefined, got: { amount: number; payee: string; date: string; invoiceNumber?: string }) {
   if (!x) return undefined;

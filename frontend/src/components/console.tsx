@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BadgeCheck, Building2, KeyRound, Loader2, Plus, Sparkles, Trash2, UserPlus, Users, Wand2, X } from "lucide-react";
+import { BadgeCheck, Building2, KeyRound, Loader2, PenLine, Plus, Sparkles, Trash2, UserPlus, Users, Wand2, X } from "lucide-react";
 import clsx from "clsx";
 import { api, ago, useJson, useLive, usd } from "@/components/hooks";
 import { Empty, Pill, RiskBadge, Section, StatusIcon, StatusPill } from "@/components/ui";
@@ -541,9 +541,14 @@ export function FundAdmin() {
 
 const CATS = Object.keys(CAT_LABEL);
 
+/** A blank fund for filling in by hand. */
+const blankDraft = (): Draft => ({ title: "", disaster: "", region: "", description: "", goal: 0, lat: 0, lng: 0, needs: [{ item: "", category: "food", unit: "", targetQty: 1, unitCost: 0 }], categoryCaps: {}, engine: "manual" });
+
 function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCard[] }) {
+  const [mode, setMode] = useState<"ai" | "manual">("ai");
   const [brief, setBrief] = useState("");
   const [d, setD] = useState<Draft | null>(null);
+  const [donorReturns, setDonorReturns] = useState(false);
   // Payout policy is hidden in the tracker; new funds get these defaults.
   const policy = { dual: 2500, max: 6000, fast: 750 };
   const [codes, setCodes] = useState("");
@@ -575,12 +580,13 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
           goalUsd: d.goal / 100,
           lat: d.lat,
           lng: d.lng,
-          needs: d.needs.map((n) => ({ ...n, unitCostUsd: n.unitCost / 100 })),
+          needs: d.needs.filter((n) => n.item.trim() && n.unit.trim()).map((n) => ({ ...n, unitCostUsd: n.unitCost / 100 })),
           categoryCaps: d.categoryCaps,
           dualApprovalUsd: policy.dual,
           maxSingleUsd: policy.max,
           fastLaneUsd: policy.fast,
           trackingCodes: codes.split(/[\s,]+/).map((c) => c.replace(/^#/, "").trim()).filter(Boolean),
+          donorReturns,
         },
       });
       onCreated();
@@ -591,24 +597,52 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
     }
   }
   const set = (patch: Partial<Draft>) => setD((x) => (x ? { ...x, ...patch } : x));
+  const switchMode = (m: "ai" | "manual") => {
+    if (m === mode) return;
+    setMode(m);
+    setErr(null);
+    // By hand starts from a blank fund; AI waits for a description. An AI draft can still be edited in either.
+    setD(m === "manual" ? (d && d.engine !== "manual" ? d : blankDraft()) : d && d.engine !== "manual" ? d : null);
+  };
+  const ready = d && d.title.trim() && d.description.trim() && d.goal > 0;
 
   return (
     <section className="card p-5 border-brand">
-      <h3 className="font-semibold flex items-center gap-2"><Wand2 className="h-4 w-4 text-brand" /> Set up a fund with AI</h3>
-      <p className="text-xs text-ink-2 mt-1">Describe the crisis in a few sentences. Claude drafts the fund, its needs and spending categories; you review and edit, then give it the tracking codes that bank and PayPal payments will carry.</p>
-      <textarea className="input mt-3" rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="e.g. Flash floods in Sylhet district, Bangladesh. ~4,000 families displaced into 30 school shelters, wells contaminated, roads cut. We partner with 5 local suppliers." />
-      <button className="btn btn-primary mt-2" onClick={draft} disabled={!brief.trim() || Boolean(busy)}>
-        {busy === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Draft fund
-      </button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2">{mode === "ai" ? <Wand2 className="h-4 w-4 text-brand" /> : <PenLine className="h-4 w-4 text-brand" />} {mode === "ai" ? "Set up a fund with AI" : "Set up a fund by hand"}</h3>
+          <p className="text-xs text-ink-2 mt-1 max-w-2xl">
+            {mode === "ai"
+              ? "Describe the crisis in a few sentences. The local AI model drafts the fund, its needs and spending categories; you review and edit, then give it the tracking codes that bank and PayPal payments will carry."
+              : "Fill in the fund yourself: its name, what it's for and its goal. Needs, spending caps and location are optional and can be left out. Then give it the tracking codes that bank and PayPal payments will carry."}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-line p-1 text-xs font-semibold shrink-0" role="radiogroup" aria-label="How to set up the fund">
+          <button type="button" role="radio" aria-checked={mode === "ai"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "ai" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("ai")}>
+            <Sparkles className="h-3.5 w-3.5" aria-hidden /> Draft with AI
+          </button>
+          <button type="button" role="radio" aria-checked={mode === "manual"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "manual" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("manual")}>
+            <PenLine className="h-3.5 w-3.5" aria-hidden /> Fill in by hand
+          </button>
+        </div>
+      </div>
+      {mode === "ai" && (
+        <>
+          <textarea className="input mt-3" rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="e.g. Flash floods in Sylhet district, Bangladesh. ~4,000 families displaced into 30 school shelters, wells contaminated, roads cut. We partner with 5 local suppliers." />
+          <button className="btn btn-primary mt-2" onClick={draft} disabled={!brief.trim() || Boolean(busy)}>
+            {busy === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Draft fund
+          </button>
+        </>
+      )}
       {d && (
         <div className="mt-5 grid gap-4">
-          <Pill tone={d.engine === "claude" ? "brand" : "neutral"} className="w-fit">{d.engine === "claude" ? "Drafted by Claude: review before publishing" : "Template draft (no AI key)"}</Pill>
+          {d.engine !== "manual" && <Pill tone={d.engine === "local" ? "brand" : "neutral"} className="w-fit">{d.engine === "local" ? "Drafted by the local AI model: review every figure before publishing" : "Template draft (local AI unavailable)"}</Pill>}
           <div className="grid sm:grid-cols-2 gap-3">
-            <div><label className="label">Title</label><input className="input" value={d.title} onChange={(e) => set({ title: e.target.value })} /></div>
-            <div><label className="label">Region</label><input className="input" value={d.region} onChange={(e) => set({ region: e.target.value })} /></div>
-            <div className="sm:col-span-2"><label className="label">Public description</label><textarea className="input" rows={3} value={d.description} onChange={(e) => set({ description: e.target.value })} /></div>
-            <div><label className="label">Goal (USD)</label><input className="input" type="number" value={d.goal / 100} onChange={(e) => set({ goal: Math.round(Number(e.target.value) * 100) })} /></div>
-            <div className="grid grid-cols-2 gap-2"><div><label className="label">Lat</label><input className="input" type="number" value={d.lat} onChange={(e) => set({ lat: Number(e.target.value) })} /></div><div><label className="label">Lng</label><input className="input" type="number" value={d.lng} onChange={(e) => set({ lng: Number(e.target.value) })} /></div></div>
+            <div><label className="label" htmlFor="cf-title">Title</label><input id="cf-title" className="input" value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Sylhet Flood Relief 2026" /></div>
+            <div><label className="label" htmlFor="cf-region">Region</label><input id="cf-region" className="input" value={d.region} onChange={(e) => set({ region: e.target.value })} placeholder="e.g. Sylhet, Bangladesh" /></div>
+            <div className="sm:col-span-2"><label className="label" htmlFor="cf-desc">Public description</label><textarea id="cf-desc" className="input" rows={3} value={d.description} onChange={(e) => set({ description: e.target.value })} placeholder="What happened, who the fund helps and what the money is for. Shown on the donation link." /></div>
+            <div><label className="label" htmlFor="cf-goal">Goal (USD)</label><input id="cf-goal" className="input" type="number" min="1" value={d.goal ? d.goal / 100 : ""} onChange={(e) => set({ goal: Math.round(Number(e.target.value) * 100) })} placeholder="e.g. 50000" /></div>
+            <div className="grid grid-cols-2 gap-2"><div><label className="label" htmlFor="cf-lat">Lat (optional)</label><input id="cf-lat" className="input" type="number" value={d.lat || ""} onChange={(e) => set({ lat: Number(e.target.value) })} /></div><div><label className="label" htmlFor="cf-lng">Lng (optional)</label><input id="cf-lng" className="input" type="number" value={d.lng || ""} onChange={(e) => set({ lng: Number(e.target.value) })} /></div></div>
           </div>
           <div>
             <label className="label">Needs (drive unit-price checks and the public progress bars)</label>
@@ -624,6 +658,8 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
                 </div>
               ))}
               <div className="grid grid-cols-[1fr_120px_90px_90px_90px_32px] gap-2 text-xs text-muted"><span>Item</span><span>Category</span><span>Unit</span><span>Target</span><span>$/unit</span></div>
+              <button type="button" className="btn btn-ghost !py-1 text-sm" onClick={() => set({ needs: [...d.needs, { item: "", category: "food", unit: "", targetQty: 1, unitCost: 0 }] })}><Plus className="h-4 w-4" /> Add a need</button>
+              {mode === "manual" && <p className="text-xs text-muted">Optional. Rows without an item and a unit are left out.</p>}
             </div>
           </div>
           <div>
@@ -642,7 +678,17 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
             <input id="cf-codes" className="input font-mono" placeholder={`e.g. RO${funds.length + 1}, SYLHET`} value={codes} onChange={(e) => setCodes(e.target.value.toUpperCase())} />
             <p className="text-xs text-muted mt-1">Donors and staff write <span className="font-mono">#RO{funds.length + 1}</span> in the payment description; add <span className="font-mono">-MED</span>, <span className="font-mono">-FOOD</span>, <span className="font-mono">-LOG</span>… for a budget category.</p>
           </div>
-          <button className="btn btn-primary w-fit" onClick={create} disabled={Boolean(busy)}>{busy === "create" && <Loader2 className="h-4 w-4 animate-spin" />} Publish fund</button>
+          <label className="flex items-start gap-2.5 max-w-2xl">
+            <input type="checkbox" className="mt-1" checked={donorReturns} onChange={(e) => setDonorReturns(e.target.checked)} />
+            <span>
+              <span className="text-sm font-medium">Let donors ask for their share of the leftover back</span>
+              <span className="block text-xs text-ink-2">Donors can tick this when they give. If money is left when the fund closes, each one who asked gets the same share of it as their gift was of everything raised. You can change this later under Funds.</span>
+            </span>
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn btn-primary w-fit" onClick={create} disabled={Boolean(busy) || !ready}>{busy === "create" && <Loader2 className="h-4 w-4 animate-spin" />} Publish fund</button>
+            {!ready && <span className="text-xs text-muted">Add a title, a description and a goal to publish.</span>}
+          </div>
         </div>
       )}
       {err && <p className="text-sm text-critical mt-2">{err}</p>}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, FileText, Link2Off, Loader2, ScanLine, Upload } from "lucide-react";
+import { AlertTriangle, FileText, Link2Off, Loader2, Paperclip, PenLine, ScanLine, Upload, X } from "lucide-react";
 import clsx from "clsx";
 import { api, useJson, useLive, usd } from "./hooks";
 import { CAT_LABEL } from "./SpendCard";
@@ -17,7 +17,7 @@ type Extraction = {
   lineItems: { description: string; amount: number | null }[];
   legible: boolean;
 };
-type Scan = { fileId: string; fileName: string; url: string; engine: "claude" | "none"; extraction: Extraction | null; note?: string; suggestion: { fundId?: string; category?: string; code?: string } };
+type Scan = { fileId: string; fileName: string; url: string; engine: "local" | "claude" | "none"; extraction: Extraction | null; note?: string; suggestion: { fundId?: string; category?: string; code?: string } };
 
 const METHODS: [string, string][] = [
   ["bank_transfer", "Bank transfer"],
@@ -29,11 +29,24 @@ const METHODS: [string, string][] = [
 const fromBank = (m: string) => m === "bank_transfer" || m === "card" || m === "cheque";
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Upload a receipt or invoice. `read: false` stores and hashes it without the AI reading it. */
+async function uploadReceipt(file: File, read: boolean): Promise<Scan> {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (!read) fd.append("read", "0");
+  const res = await fetch("/api/payments/scan", { method: "POST", body: fd });
+  const j = (await res.json().catch(() => ({}))) as Scan & { error?: string };
+  if (!res.ok) throw new Error(j.error || `Upload failed (${res.status})`);
+  return j;
+}
+
 /**
- * Declare money out from a receipt or invoice: upload it, Claude reads it and
- * fills in the form, the person checks it, and it's posted to the fund's ledger.
+ * Declare money out of a fund, two ways: upload the receipt or invoice and
+ * the local AI model fills in the form for the person to check, or type the details in by
+ * hand and attach the receipt if there is one (it can also be attached later).
  */
 export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string; title: string }[]; isAdmin: boolean; onDone: (message: string) => void }) {
+  const [mode, setMode] = useState<"ai" | "manual">("ai");
   const [scan, setScan] = useState<Scan | null>(null);
   const [scanning, setScanning] = useState(false);
   const [f, setF] = useState({ fundId: funds[0]?.id ?? "", category: "", amountUsd: "", payee: "", date: today(), method: "bank_transfer", invoiceNumber: "", description: "" });
@@ -46,12 +59,10 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
     setErr(null);
     setConflict(false);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/payments/scan", { method: "POST", body: fd });
-      const j = (await res.json().catch(() => ({}))) as Scan & { error?: string };
-      if (!res.ok) throw new Error(j.error || `Upload failed (${res.status})`);
+      const j = await uploadReceipt(file, mode === "ai");
       setScan(j);
+      // Manual entry: the file is only attached; what's typed stays as it is.
+      if (mode === "manual") return;
       const x = j.extraction;
       // Pre-fill from what was read; the person checks every field before saving.
       setF((cur) => ({
@@ -72,11 +83,11 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
   }
 
   async function save(force = false) {
-    if (!scan) return;
+    if (!scan && mode === "ai") return;
     setBusy(true);
     setErr(null);
     try {
-      const r = await api<{ message: string }>("/api/payments", { json: { action: "create", fileId: scan.fileId, ...f, category: f.category || undefined, amountUsd: Number(f.amountUsd), force } });
+      const r = await api<{ message: string }>("/api/payments", { json: { action: "create", fileId: scan?.fileId, ...f, category: f.category || undefined, amountUsd: Number(f.amountUsd), force } });
       onDone(r.message);
     } catch (e) {
       const m = (e as Error).message;
@@ -87,6 +98,13 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
     }
   }
 
+  const switchMode = (m: "ai" | "manual") => {
+    if (m === mode) return;
+    setMode(m);
+    setScan(null);
+    setErr(null);
+    setConflict(false);
+  };
   const x = scan?.extraction;
   const notUsd = x?.currency && x.currency.toUpperCase() !== "USD";
   const differs = (field: "amount" | "payee" | "date" | "invoice") => {
@@ -100,12 +118,24 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
 
   return (
     <section className="card p-5 mb-5 border-brand">
-      <h2 className="font-semibold">Record a payment</h2>
-      <p className="text-xs text-ink-2 mt-0.5">
-        Money paid out of a fund: upload the receipt or invoice and Claude fills in the details for you to check. It goes on the fund&apos;s ledger and the audit log under your name. A bank payment is matched to its bank line when the statement comes in, so it&apos;s only counted once. {!isAdmin && "You can record for funds you're an approver on."}
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Record a payment</h2>
+          <p className="text-xs text-ink-2 mt-0.5 max-w-3xl">
+            Money paid out of a fund. {mode === "ai" ? "Upload the receipt or invoice (a photo or a PDF): it's read on this machine (OCR, then the local AI model) and the details are filled in for you to check." : "Type the details in, and attach the receipt or invoice if you have it (you can also attach it later)."} It goes on the fund&apos;s ledger and the audit log under your name. A bank payment is matched to its bank line when the statement comes in, so it&apos;s only counted once. {!isAdmin && "You can record for funds you're an approver on."}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-line p-1 text-xs font-semibold shrink-0" role="radiogroup" aria-label="How to fill in the payment">
+          <button type="button" role="radio" aria-checked={mode === "ai"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "ai" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("ai")}>
+            <ScanLine className="h-3.5 w-3.5" aria-hidden /> Read the receipt
+          </button>
+          <button type="button" role="radio" aria-checked={mode === "manual"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "manual" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("manual")}>
+            <PenLine className="h-3.5 w-3.5" aria-hidden /> Enter by hand
+          </button>
+        </div>
+      </div>
 
-      {!scan ? (
+      {mode === "ai" && !scan ? (
         <label
           className={clsx("mt-4 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line p-8 text-center cursor-pointer hover:border-brand", scanning && "opacity-70 pointer-events-none")}
           onDragOver={(e) => e.preventDefault()}
@@ -131,14 +161,15 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
           />
         </label>
       ) : (
-        <div className="mt-4 grid lg:grid-cols-[300px_minmax(0,1fr)] gap-5">
+        <div className={clsx("mt-4 grid gap-5", scan && mode === "ai" && "lg:grid-cols-[300px_minmax(0,1fr)]")}>
+          {mode === "ai" && scan && (
           <aside className="rounded-lg border border-line p-3 text-xs space-y-2 h-fit">
             <a href={scan.url} target="_blank" rel="noreferrer" className="font-medium inline-flex items-center gap-1 underline break-all">
               <FileText className="h-3.5 w-3.5 shrink-0" /> {scan.fileName}
             </a>
-            {scan.engine === "claude" && x ? (
+            {(scan.engine === "local" || scan.engine === "claude") && x ? (
               <>
-                <div className="flex items-center gap-1.5 text-ink-2"><ScanLine className="h-3.5 w-3.5 text-brand" /> Read by Claude{!x.legible && <Pill tone="warn">Hard to read</Pill>}</div>
+                <div className="flex items-center gap-1.5 text-ink-2"><ScanLine className="h-3.5 w-3.5 text-brand" /> Read by the local AI model{!x.legible && <Pill tone="warn">Hard to read</Pill>}</div>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-ink-2">
                   <dt className="text-muted">Supplier</dt><dd>{x.supplier ?? "—"}</dd>
                   <dt className="text-muted">Invoice no.</dt><dd>{x.invoiceNumber ?? "—"}</dd>
@@ -160,6 +191,7 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
             )}
             <button type="button" className="text-muted underline" onClick={() => { setScan(null); setErr(null); setConflict(false); }}>Use a different file</button>
           </aside>
+          )}
 
           <form
             className="grid sm:grid-cols-2 gap-3 content-start"
@@ -171,7 +203,7 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
             {notUsd && (
               <p className="sm:col-span-2 text-xs rounded-lg bg-warn-wash text-warn-ink p-2 flex gap-1.5"><AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> This receipt is in {x!.currency}. Enter the amount in USD as it left the account.</p>
             )}
-            <div><label className="label" htmlFor="px-fund">Fund</label><select id="px-fund" className="input" value={f.fundId} onChange={(e) => setF({ ...f, fundId: e.target.value })}>{funds.map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</select>{scan.suggestion.code && <span className="text-xs text-muted">Suggested by #{scan.suggestion.code} on the receipt</span>}</div>
+            <div><label className="label" htmlFor="px-fund">Fund</label><select id="px-fund" className="input" value={f.fundId} onChange={(e) => setF({ ...f, fundId: e.target.value })}>{funds.map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</select>{scan?.suggestion.code && <span className="text-xs text-muted">Suggested by #{scan.suggestion.code} on the receipt</span>}</div>
             <div><label className="label" htmlFor="px-cat">Category</label><select id="px-cat" className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}><option value="">Uncategorised</option>{Object.entries(CAT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
             <div><label className="label" htmlFor="px-payee">Paid to{edited(differs("payee"))}</label><input id="px-payee" className="input" placeholder="Supplier or person" value={f.payee} onChange={(e) => setF({ ...f, payee: e.target.value })} /></div>
             <div><label className="label" htmlFor="px-amt">Amount (USD){edited(differs("amount"))}</label><input id="px-amt" className="input tnum" type="number" min="0.01" step="0.01" value={f.amountUsd} onChange={(e) => setF({ ...f, amountUsd: e.target.value })} /></div>
@@ -182,6 +214,26 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
               <span className="text-xs text-muted">{fromBank(f.method) ? "Will be matched to its bank line" : "No bank line expected"}</span>
             </div>
             <div><label className="label" htmlFor="px-inv">Invoice / receipt no.{edited(differs("invoice"))}</label><input id="px-inv" className="input font-mono" value={f.invoiceNumber} onChange={(e) => setF({ ...f, invoiceNumber: e.target.value })} /></div>
+            {mode === "manual" && (
+              <div className="sm:col-span-2">
+                <span className="label">Receipt or invoice (optional)</span>
+                {scan ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm">
+                    <FileText className="h-4 w-4 text-ink-2 shrink-0" aria-hidden />
+                    <a href={scan.url} target="_blank" rel="noreferrer" className="underline break-all">{scan.fileName}</a>
+                    <button type="button" className="ml-auto p-1 text-muted hover:text-critical rounded" onClick={() => setScan(null)} aria-label="Remove the attached file"><X className="h-4 w-4" /></button>
+                  </div>
+                ) : (
+                  <label className={clsx("flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-sm cursor-pointer hover:border-brand", scanning && "opacity-70 pointer-events-none")}>
+                    {scanning ? <Loader2 className="h-4 w-4 animate-spin text-brand" /> : <Paperclip className="h-4 w-4 text-brand" aria-hidden />}
+                    <span>{scanning ? "Attaching…" : "Attach an image or PDF"}</span>
+                    <span className="text-xs text-muted">stored as evidence, not read by AI</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" disabled={scanning} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(file); }} />
+                  </label>
+                )}
+                {!scan && <span className="text-xs text-muted">No receipt to hand? Record it now and attach it later from the list of declared payments.</span>}
+              </div>
+            )}
             <div className="sm:col-span-2"><label className="label" htmlFor="px-desc">What it was for</label><input id="px-desc" className="input" placeholder="e.g. 200 tarpaulins for Kendrapara shelters" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /><span className="text-xs text-muted">Shown on the fund&apos;s ledger. A private person&apos;s name is replaced there, as on bank lines.</span></div>
             <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
               <button className="btn btn-primary" disabled={busy || !f.fundId || !f.amountUsd || !f.payee.trim() || f.description.trim().length < 3}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Add to ledger</button>
@@ -231,6 +283,21 @@ const STATUS: Record<Payment["status"], { label: string; tone: "good" | "warn" |
 export function DeclaredPayments({ meId, isAdmin, onChanged }: { meId: string; isAdmin: boolean; onChanged: (m: string) => void }) {
   const { data, reload } = useJson<{ payments: Payment[] }>("/api/payments");
   const [busy, setBusy] = useState<string | null>(null);
+
+  async function attach(id: string, file: File) {
+    setBusy(id);
+    setErr(null);
+    try {
+      const scan = await uploadReceipt(file, true);
+      const r = await api<{ message: string }>("/api/payments", { json: { action: "attach", id, fileId: scan.fileId } });
+      await reload();
+      onChanged(r.message);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
   const [voiding, setVoiding] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -285,6 +352,15 @@ export function DeclaredPayments({ meId, isAdmin, onChanged }: { meId: string; i
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Pill tone={STATUS[p.status].tone}>{STATUS[p.status].label}</Pill>
                   {p.receipt && <a href={p.receipt.url} target="_blank" rel="noreferrer" className="btn btn-ghost !py-1 text-xs"><FileText className="h-3.5 w-3.5" /> Receipt</a>}
+                  {!p.receipt && p.status !== "void" && (
+                    <>
+                      <Pill tone="warn">No receipt</Pill>
+                      <label className={clsx("btn btn-ghost !py-1 text-xs cursor-pointer", busy === p.id && "opacity-60 pointer-events-none")} title="Attach the receipt or invoice for this payment">
+                        {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />} Attach receipt
+                        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void attach(p.id, file); }} />
+                      </label>
+                    </>
+                  )}
                   {p.status === "matched" && (
                     <button className="btn btn-ghost !py-1 text-xs" disabled={busy === p.id} onClick={() => act(p.id, { action: "unlink" })} title="Wrong bank line? Send it back to the Untagged queue">
                       <Link2Off className="h-3.5 w-3.5" /> Unlink

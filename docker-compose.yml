@@ -37,7 +37,7 @@ services:
     build: ./backend
     image: clearaid-backend
     env_file:
-      - path: ./backend/.env # PayPal, Plaid, Anthropic keys (optional)
+      - path: ./backend/.env # PayPal and Plaid keys (optional)
         required: false
     environment:
       # These always win over backend/.env, which is written for running on the host.
@@ -48,6 +48,7 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-} # empty: a random one is generated once and kept in the data volume
       OLLAMA_URL: http://ollama:11434
       COPILOT_MODEL: ${COPILOT_MODEL:-llama3.1:8b}
+      LOCAL_VISION_MODEL: ${LOCAL_VISION_MODEL:-llava}
       RAG_URL: http://rag:8790
       RAG_TOKEN: ${RAG_TOKEN:-}
     volumes:
@@ -119,11 +120,23 @@ services:
     networks: [internal]
     restart: "no"
 
+  # Only for reading receipt and photo images. Nothing waits for it either.
+  models-vision:
+    image: *ollama-image
+    entrypoint: ["ollama", "pull", "${LOCAL_VISION_MODEL:-llava}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
+
 networks:
   # Only the UI sits on the edge network with a published port.
   edge: {}
   # The API, rag and ollama talk to each other here and are never published.
-  # Not "internal: true": the API calls PayPal, Plaid and Anthropic, and ollama
+  # Not "internal: true": the API calls PayPal and Plaid, and ollama
   # downloads models, so both need the internet.
   internal: {}
 

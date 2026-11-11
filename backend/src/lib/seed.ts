@@ -454,9 +454,9 @@ export function buildSeed(version: number): DB {
           approvals: [],
           createdAt: iso(t - 4 * 3600_000),
           audit: {
-            engine: "claude",
+            engine: "local",
             seeded: true,
-            model: config.claudeModel,
+            model: "sample",
             ranAt: iso(t - 3.9 * 3600_000),
             riskScore: sp.risk,
             verdict: sp.verdict ?? "approve",

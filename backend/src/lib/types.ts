@@ -111,7 +111,8 @@ export interface FundPolicy {
 export type FundStatus = "active" | "closing" | "closed";
 
 export interface FundInsights {
-  engine: "claude" | "heuristic";
+  /** "local": the local model (Ollama). "claude": older records made before AI moved on-device. */
+  engine: "local" | "claude" | "heuristic";
   generatedAt: string;
   headline: string;
   summary: string;
@@ -238,8 +239,8 @@ export interface StoredFile {
   /** Public files can be shown on the fund page; private ones only to the NGO. */
   public: boolean;
   createdAt: string;
-  /** What Claude read off a receipt uploaded to declare a payment (kept so the audit can say what was changed). */
-  scan?: { engine: "claude" | "none"; extraction?: BankReceipt["extraction"]; note?: string; ngoId: string };
+  /** What the local AI read off a receipt uploaded to declare a payment (kept so the audit can say what was changed). */
+  scan?: { engine: "local" | "claude" | "none"; extraction?: BankReceipt["extraction"]; note?: string; ngoId: string };
 }
 
 export type CheckStatus = "pass" | "warn" | "fail";
@@ -273,7 +274,8 @@ export interface PhotoFinding {
 export type Verdict = "approve" | "needs_review" | "reject";
 
 export interface AuditResult {
-  engine: "claude" | "heuristic";
+  /** "local": the local model (Ollama). "claude": older records made before AI moved on-device. */
+  engine: "local" | "claude" | "heuristic";
   /** True for illustrative audits that ship with the demo seed data. */
   seeded?: boolean;
   model?: string;
@@ -644,7 +646,7 @@ export interface PendingTag {
 
 export interface BankReceipt {
   fileId: string;
-  engine: "claude" | "none";
+  engine: "local" | "claude" | "none";
   extraction?: {
     supplier: string | null;
     invoiceNumber: string | null;
@@ -701,6 +703,7 @@ export type AuditAction =
   | "payment.matched"
   | "payment.unlinked"
   | "payment.voided"
+  | "payment.receipt_attached"
   | "refund.issued"
   | "export.transactions"
   | "export.audit"

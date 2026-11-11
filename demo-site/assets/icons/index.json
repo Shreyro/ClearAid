@@ -506,15 +506,6 @@
    "tone": "ink"
   },
   {
-   "id": "zapier",
-   "name": "Zapier",
-   "icon": "logos:zapier",
-   "tags": [
-    "automation"
-   ],
-   "wide": true
-  },
-  {
    "id": "n8n",
    "name": "n8n",
    "icon": "logos:n8n-icon",
@@ -7798,12 +7789,6 @@
    0,
    256,
    256.76
-  ],
-  "logos:zapier": [
-   0,
-   0,
-   512,
-   138.743
   ],
   "logos:n8n-icon": [
    0,

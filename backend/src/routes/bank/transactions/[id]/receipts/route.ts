@@ -13,7 +13,7 @@ import { announce } from "../../../shared";
 
 /**
  * Attach a receipt or invoice to a bank line as evidence. The file is stored
- * privately with its SHA-256; Claude reads it (if configured) and a fixed rule
+ * privately with its SHA-256; the local OCR + LLM reads it (if running) and a fixed rule
  * scores how well it matches the line. It never changes the line's tag.
  */
 export const POST = handle(async (req: Request, ctx: Ctx<{ id: string }>) => {

@@ -25,7 +25,7 @@ export function InsightsCard({ fundId }: { fundId: string }) {
           <Sparkles className="h-4 w-4 text-brand" /> Crisis insights
         </h2>
         <div className="flex items-center gap-2">
-          {data && <Pill tone={data.engine === "claude" ? "brand" : "neutral"}>{data.engine === "claude" ? "Written by Claude from the ledger" : "Computed summary"}</Pill>}
+          {data && <Pill tone={data.engine === "local" || data.engine === "claude" ? "brand" : "neutral"}>{data.engine === "local" ? "Written by the local AI model from the ledger" : data.engine === "claude" ? "Written by Claude from the ledger" : "Computed summary"}</Pill>}
           <button className="btn btn-ghost !p-1.5" onClick={refresh} disabled={busy} title="Regenerate">
             <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
           </button>

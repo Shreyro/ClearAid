@@ -11,13 +11,15 @@ import { saveUpload } from "@/lib/uploads";
 
 /**
  * Step 1 of declaring a payment: upload the receipt or invoice. The file is
- * stored privately with its SHA-256 and Claude reads it. Nothing is posted:
+ * stored privately with its SHA-256 and read locally (OCR + LLM). Nothing is posted:
  * the reading only pre-fills the form, which the person checks and corrects.
+ * With read=0 (manual entry) the file is only stored and hashed, not read.
  */
 export const POST = handle(async (req: Request) => {
   const me = await requireNgo();
   const form = await req.formData();
   const file = form.get("file");
+  const read = form.get("read") !== "0";
   if (!(file instanceof File) || !file.size) throw new HttpError(400, "Choose the receipt or invoice (image or PDF)");
 
   let stored;
@@ -45,7 +47,7 @@ export const POST = handle(async (req: Request) => {
   }
   mutate((d) => d.files.push(stored));
 
-  const scan = await scanReceipt(stored);
+  const scan: Awaited<ReturnType<typeof scanReceipt>> = read ? await scanReceipt(stored) : { engine: "none", note: "Attached without reading: the details are entered by hand." };
   mutate((d) => {
     const f = d.files.find((x) => x.id === stored.id);
     if (f) f.scan = { ...scan, ngoId: me.ngoId };

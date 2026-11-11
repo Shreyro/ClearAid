@@ -4,7 +4,6 @@ const nextConfig: NextConfig = {
   // ClearAid serves a live, mutable ledger, so pages fetch fresh data on the
   // client and API routes are dynamic. We use the classic (non Cache Components)
   // rendering model to keep that behaviour explicit.
-  serverExternalPackages: ["@paypal/agent-toolkit"],
   // The Docker image sets NEXT_OUTPUT=standalone: the build then carries its own
   // minimal server and dependencies (node .next/standalone/server.js), so the
   // runtime image needs no node_modules. Local dev and `next start` are unchanged.
