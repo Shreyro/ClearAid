@@ -16,8 +16,14 @@ export async function GET(_req: Request, ctx: Ctx<{ id: string }>) {
     const fund = owner && db.funds.find((x) => x.id === owner.fundId);
     const member = s.role === "ngo" ? ngoMember(s.id) : undefined;
     const bankLine = db.bankTxns.find((t) => t.receipts?.some((r) => r.fileId === id));
-    const bankOk = Boolean(bankLine && member && db.bankAccounts.some((a) => a.id === bankLine.accountId && a.ngoId === member.ngoId) && canSeeTxn(bankLine, member, db));
-    const ok = Boolean(fund && ngoCanSeeFund(s, fund)) || bankOk;
+    const bankOk = Boolean(bankLine && member && member.role !== "donor" && db.bankAccounts.some((a) => a.id === bankLine.accountId && a.ngoId === member.ngoId) && canSeeTxn(bankLine, member, db));
+    // A receipt behind a declared payment: admins, or staff assigned to that fund (never donors).
+    const payment = db.payments?.find((p) => p.receipt?.fileId === id);
+    const payFund = payment && db.funds.find((x) => x.id === payment.fundId);
+    const paymentOk = Boolean(payFund && ngoCanSeeFund(s, payFund));
+    // A receipt just scanned and not yet recorded: anyone on staff of the NGO (they see the preview while filling in the form).
+    const scannedOnly = !owner && !bankLine && !payment && Boolean(member && member.role !== "donor" && f.scan?.ngoId === member.ngoId);
+    const ok = Boolean(fund && ngoCanSeeFund(s, fund)) || bankOk || paymentOk || scannedOnly;
     if (!ok) return new Response("This file is private to protect the people in it", { status: 403 });
   }
   const p = path.join(uploadsDir(), f.id);

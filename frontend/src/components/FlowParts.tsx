@@ -23,7 +23,7 @@ export function PartyTable({ title, parties, sign, more }: { title: string; part
                 <span className="truncate font-medium" title={p.name}>{p.name}</span>
                 <span className="tnum font-semibold shrink-0">{sign}{usd(p.total)}</span>
               </div>
-              <div className="h-1.5 mt-1 rounded-r bg-[#efeee9]"><div className="h-full rounded-r" style={{ width: `${(p.total / max) * 100}%`, background: "var(--series-1)" }} /></div>
+              <div className="h-1.5 mt-1 rounded-r bg-hover"><div className="h-full rounded-r" style={{ width: `${(p.total / max) * 100}%`, background: "var(--series-1)" }} /></div>
               <div className="text-xs text-muted mt-1 truncate">{p.count} payment{p.count > 1 ? "s" : ""} · {p.via} · {p.funds.join(", ")}</div>
             </li>
           ))}
@@ -45,7 +45,7 @@ export function MovementList({ rows }: { rows: Movement[] }) {
               <ArrowRight className="h-3 w-3 text-muted shrink-0" />
               <span className="truncate" title={m.to}>{m.to}</span>
             </span>
-            <span className={clsx("tnum font-semibold shrink-0", m.amount < 0 ? "text-[#9b3d17]" : "text-good-ink")}>{m.amount < 0 ? "−" : "+"}{usd(Math.abs(m.amount))}</span>
+            <span className={clsx("tnum font-semibold shrink-0", m.amount < 0 ? "text-out-ink" : "text-good-ink")}>{m.amount < 0 ? "−" : "+"}{usd(Math.abs(m.amount))}</span>
           </div>
           <div className="text-muted mt-0.5">{ago(m.ts)} · {m.typeLabel}{m.via ? ` · ${m.via}` : ""}</div>
         </li>

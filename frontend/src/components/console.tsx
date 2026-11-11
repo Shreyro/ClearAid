@@ -8,10 +8,14 @@ import { api, ago, useJson, useLive, usd } from "@/components/hooks";
 import { Empty, Pill, RiskBadge, Section, StatusIcon, StatusPill } from "@/components/ui";
 import { CAT_LABEL, type WView } from "@/components/SpendCard";
 import { CodesEditor } from "@/components/banking";
+import type { PayPalAccount } from "@/components/PayPalAccounts";
 
 
-export type Member = { id: string; name: string; title: string; role: "admin" | "user"; ngoName: string };
-export type DemoLogin = { username: string; password: string; name: string; title: string; role: "admin" | "user"; note: string };
+export type Role = "admin" | "user" | "donor";
+/** How each kind of login is named on screen. */
+export const roleName = (r: Role) => (r === "admin" ? "Admin" : r === "donor" ? "Donor" : "Staff");
+export type Member = { id: string; name: string; title: string; role: Role; ngoName: string };
+export type DemoLogin = { username: string; password: string; name: string; title: string; role: Role; note: string };
 export type Sess = { session: { role: string; id?: string; name?: string; member?: Member | null }; demoLogins: DemoLogin[] };
 
 // ---------------------------------------------------------------- Sign in ----
@@ -81,7 +85,7 @@ export function SignIn({ demoLogins, onSignedIn }: { demoLogins: DemoLogin[]; on
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold">{l.name} <span className="font-normal text-muted text-sm">· {l.title}</span></span>
-                  <Pill tone={l.role === "admin" ? "brand" : "neutral"}>{l.role === "admin" ? "Admin" : "Staff"}</Pill>
+                  <Pill tone={l.role === "admin" ? "brand" : "neutral"}>{roleName(l.role)}</Pill>
                 </div>
                 <div className="text-xs text-ink-2 mt-1">{l.note}</div>
                 <div className="text-xs mt-2 font-mono text-muted">{l.username} / {l.password}</div>
@@ -168,7 +172,7 @@ export function Queue({ me, onGoToAccess }: { me: Member; onGoToAccess: () => vo
               {w.status === "auditing" ? (
                 <div className="mt-3 text-sm text-ink-2 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Redacting personal data and auditing receipt + photos…</div>
               ) : w.audit ? (
-                <div className="mt-3 rounded-lg bg-[#f7f7f3] p-3 text-sm">
+                <div className="mt-3 rounded-lg bg-sunken p-3 text-sm">
                   <div className="flex items-start gap-2"><Sparkles className="h-4 w-4 text-brand mt-0.5 shrink-0" /><span>{w.audit.summary}</span></div>
                   {[...fails, ...warns].slice(0, 4).map((c) => (
                     <div key={c.id} className="flex items-start gap-2 mt-1.5 text-xs"><StatusIcon status={c.status} className="h-3.5 w-3.5 mt-0.5" /><span><b>{c.label}:</b> {c.detail}</span></div>
@@ -177,7 +181,7 @@ export function Queue({ me, onGoToAccess }: { me: Member; onGoToAccess: () => vo
                 </div>
               ) : null}
               {short && (
-                <div className="mt-3 rounded-lg bg-[#fff4d6] text-[#7a5200] p-3 text-xs flex flex-wrap items-center gap-2">
+                <div className="mt-3 rounded-lg bg-warn-wash text-warn-ink p-3 text-xs flex flex-wrap items-center gap-2">
                   <Users className="h-3.5 w-3.5 shrink-0" />
                   <span className="flex-1 min-w-[12rem]">
                     Needs {w.requiredApprovals} signatures, but only {w.signing?.approvers.length ?? 0} {(w.signing?.approvers.length ?? 0) === 1 ? "person is" : "people are"} assigned to this fund. Someone else has to be assigned before it can be paid.
@@ -222,7 +226,7 @@ export function Queue({ me, onGoToAccess }: { me: Member; onGoToAccess: () => vo
 
 // ------------------------------------------------------------------ Funds ----
 
-type FundCard = { id: string; slug: string; title: string; status: string; raised: number; spent: number; balance: number; donors: number; transparency: number; trackingCodes: string[]; bankIn: number; bankOut: number };
+type FundCard = { id: string; slug: string; title: string; status: string; raised: number; spent: number; balance: number; donors: number; transparency: number; trackingCodes: string[]; bankIn: number; bankOut: number; paypalAccountId: string };
 type Draft = { title: string; disaster: string; region: string; description: string; goal: number; lat: number; lng: number; needs: { item: string; category: string; unit: string; targetQty: number; unitCost: number }[]; categoryCaps: Record<string, number>; engine: string };
 
 type AccessFund = {
@@ -231,7 +235,7 @@ type AccessFund = {
   title: string;
   status: string;
   dualApprovalThreshold: number;
-  assignees: { id: string; name: string; title: string; role: "admin" | "user" }[];
+  assignees: { id: string; name: string; title: string; role: Role }[];
   youAreAssigned: boolean;
   yourPendingRequest: string | null;
   approvers: number;
@@ -239,7 +243,7 @@ type AccessFund = {
   gap: string | null;
 };
 type AccessRequest = { id: string; fundId: string; fundTitle: string; member: { id: string; name: string }; note?: string; status: string; createdAt: string; decidedBy?: string; decidedAt?: string };
-type TeamMember = { id: string; name: string; title: string; role: "admin" | "user"; active: boolean; username?: string; createdAt: string; fundIds: string[] };
+type TeamMember = { id: string; name: string; title: string; role: Role; active: boolean; username?: string; createdAt: string; fundIds: string[]; viewFundIds?: string[] };
 
 function useAccess() {
   const access = useJson<{ funds: AccessFund[]; requests: AccessRequest[] }>("/api/ngo/assignments");
@@ -299,7 +303,7 @@ export function Access({ me }: { me: Member }) {
             : "You can see and tag money for the funds you're assigned to. To work on another fund, ask to join it and an admin will approve your request."}
         </p>
       </div>
-      {msg && <div className={clsx("card p-3 text-sm", msg.bad ? "border-[#f0c4c4] text-critical" : "bg-brand-wash border-[#bfe3dc]")}>{msg.text}</div>}
+      {msg && <div className={clsx("card p-3 text-sm", msg.bad ? "border-bad-line text-critical" : "bg-brand-wash border-brand-line")}>{msg.text}</div>}
 
       {isAdmin && pending.length > 0 && (
         <Section title={<span className="flex items-center gap-2">Requests to join a fund <Pill tone="warn">{pending.length} waiting</Pill></span>}>
@@ -328,9 +332,9 @@ export function Access({ me }: { me: Member }) {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {data.funds.map((f) => {
-          const addable = active.filter((m) => !f.assignees.some((a) => a.id === m.id));
+          const addable = active.filter((m) => m.role !== "donor" && !f.assignees.some((a) => a.id === m.id));
           return (
-            <div key={f.id} className={clsx("card p-4 flex flex-col gap-3", f.gap && f.status !== "closed" && "border-[#f3d48a]")}>
+            <div key={f.id} className={clsx("card p-4 flex flex-col gap-3", f.gap && f.status !== "closed" && "border-warn-line")}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link href={`/funds/${f.slug}`} className="font-semibold hover:underline leading-snug">{f.title}</Link>
@@ -340,11 +344,11 @@ export function Access({ me }: { me: Member }) {
               </div>
 
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-muted font-semibold mb-1.5">People with access ({f.approvers})</div>
+                <div className="text-xs uppercase tracking-wide text-muted font-semibold mb-1.5">People with access ({f.approvers})</div>
                 <div className="flex flex-wrap gap-1.5">
                   {f.assignees.length === 0 && <span className="text-xs text-muted">Nobody yet</span>}
                   {f.assignees.map((a) => (
-                    <span key={a.id} className={clsx("inline-flex items-center gap-1 rounded-full border border-line pl-2.5 pr-1.5 py-0.5 text-xs", a.id === me.id && "bg-brand-wash border-[#bfe3dc]")}>
+                    <span key={a.id} className={clsx("inline-flex items-center gap-1 rounded-full border border-line pl-2.5 pr-1.5 py-0.5 text-xs", a.id === me.id && "bg-brand-wash border-brand-line")}>
                       {a.name}{a.id === me.id && " (you)"}
                       {isAdmin && (
                         <button className="text-muted hover:text-critical rounded-full p-0.5" aria-label={`Remove ${a.name} from ${f.title}`} disabled={Boolean(busy)} onClick={() => act(f.id + a.id, { action: "unassign", fundId: f.id, memberId: a.id })}>
@@ -357,7 +361,7 @@ export function Access({ me }: { me: Member }) {
               </div>
 
               {f.gap && (
-                <div className="rounded-lg bg-[#fff4d6] text-[#7a5200] p-2.5 text-xs">
+                <div className="rounded-lg bg-warn-wash text-warn-ink p-2.5 text-xs">
                   <b>Needs someone else assigned.</b> {f.gap}.
                   {f.blockedWithdrawals > 0 && <> {f.blockedWithdrawals} pending withdrawal{f.blockedWithdrawals > 1 ? "s are" : " is"} stuck until then.</>}
                 </div>
@@ -432,8 +436,22 @@ export function Access({ me }: { me: Member }) {
 
 export function FundAdmin() {
   const { data, reload } = useJson<{ funds: FundCard[] }>("/api/funds");
+  const { data: pp, reload: reloadPp } = useJson<{ accounts: PayPalAccount[] }>("/api/paypal/accounts");
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  async function setAccount(fundId: string, accountId: string) {
+    setSaving(fundId);
+    try {
+      setMsg((await api<{ message: string }>("/api/paypal/accounts", { json: { action: "assign_fund", fundId, accountId } })).message);
+      await Promise.all([reload(), reloadPp()]);
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setSaving(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -442,13 +460,14 @@ export function FundAdmin() {
         <button className="btn btn-primary" onClick={() => setCreating((c) => !c)}><Plus className="h-4 w-4" /> New fund</button>
       </div>
       {creating && <CreateFund onCreated={() => { setCreating(false); void reload(); }} funds={data?.funds ?? []} />}
-      {msg && <div className="card p-3 text-sm bg-brand-wash border-[#bfe3dc]">{msg}</div>}
+      {msg && <div className="card p-3 text-sm bg-brand-wash border-brand-line">{msg}</div>}
       <div className="card overflow-x-auto">
-        <table className="w-full text-sm min-w-[720px]">
+        <table className="w-full text-sm min-w-[880px]">
           <thead>
             <tr className="text-left text-xs text-muted border-b border-line">
               <th className="px-4 py-2.5 font-medium">Fund</th>
               <th className="px-4 py-2.5 font-medium">Tracking codes</th>
+              <th className="px-4 py-2.5 font-medium">PayPal account</th>
               <th className="px-4 py-2.5 font-medium text-right">In</th>
               <th className="px-4 py-2.5 font-medium text-right">Out</th>
               <th className="px-4 py-2.5 font-medium text-right">Held</th>
@@ -460,7 +479,27 @@ export function FundAdmin() {
               <tr key={f.id} className="border-b border-line last:border-0">
                 <td className="px-4 py-3"><Link className="font-medium hover:underline" href={`/funds/${f.slug}`}>{f.title}</Link><div className="text-xs text-muted">{f.donors} payers</div></td>
                 <td className="px-4 py-3"><CodesEditor fundId={f.id} codes={f.trackingCodes} editable={f.status !== "closed"} onSaved={(m) => { setMsg(m); void reload(); }} /></td>
-                <td className="px-4 py-3 text-right tnum">{usd(f.raised)}{f.bankIn ? <div className="text-[11px] text-muted">{usd(f.bankIn)} via bank</div> : null}</td>
+                <td className="px-4 py-3">
+                  {f.status === "closed" || !pp ? (
+                    <span className="text-xs text-ink-2">{pp?.accounts.find((a) => a.id === f.paypalAccountId)?.name ?? "—"}</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      <select
+                        className="input !py-1 !w-auto max-w-[14rem] text-sm"
+                        value={f.paypalAccountId}
+                        disabled={saving === f.id}
+                        onChange={(e) => void setAccount(f.id, e.target.value)}
+                        aria-label={`PayPal account for ${f.title}'s donation link`}
+                      >
+                        {pp.accounts.filter((a) => a.status === "active" || a.id === f.paypalAccountId).map((a) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                      {saving === f.id && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right tnum">{usd(f.raised)}{f.bankIn ? <div className="text-xs text-muted">{usd(f.bankIn)} via bank</div> : null}</td>
                 <td className="px-4 py-3 text-right tnum">{usd(f.spent)}</td>
                 <td className="px-4 py-3 text-right tnum font-semibold">{usd(f.balance)}</td>
                 <td className="px-4 py-3"><StatusPill status={f.status} /></td>
@@ -479,7 +518,7 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
   const [brief, setBrief] = useState("");
   const [d, setD] = useState<Draft | null>(null);
   // Payout policy is hidden in the tracker; new funds get these defaults.
-  const policy = { dual: 2500, max: 6000, fast: 750, leftover: "carry_forward", carry: "" };
+  const policy = { dual: 2500, max: 6000, fast: 750 };
   const [codes, setCodes] = useState("");
   const [busy, setBusy] = useState<"draft" | "create" | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -514,8 +553,6 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
           dualApprovalUsd: policy.dual,
           maxSingleUsd: policy.max,
           fastLaneUsd: policy.fast,
-          leftoverDefault: policy.leftover,
-          carryForwardFundId: policy.carry || undefined,
           trackingCodes: codes.split(/[\s,]+/).map((c) => c.replace(/^#/, "").trim()).filter(Boolean),
         },
       });
@@ -559,7 +596,7 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
                   <button className="text-muted hover:text-critical" onClick={() => set({ needs: d.needs.filter((_, j) => j !== i) })} aria-label="Remove"><Trash2 className="h-4 w-4" /></button>
                 </div>
               ))}
-              <div className="grid grid-cols-[1fr_120px_90px_90px_90px_32px] gap-2 text-[11px] text-muted"><span>Item</span><span>Category</span><span>Unit</span><span>Target</span><span>$/unit</span></div>
+              <div className="grid grid-cols-[1fr_120px_90px_90px_90px_32px] gap-2 text-xs text-muted"><span>Item</span><span>Category</span><span>Unit</span><span>Target</span><span>$/unit</span></div>
             </div>
           </div>
           <div>
@@ -576,7 +613,7 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
           <div className="max-w-md">
             <label className="label" htmlFor="cf-codes">Tracking codes (bank lines with these are tagged to this fund)</label>
             <input id="cf-codes" className="input font-mono" placeholder={`e.g. RO${funds.length + 1}, SYLHET`} value={codes} onChange={(e) => setCodes(e.target.value.toUpperCase())} />
-            <p className="text-[11px] text-muted mt-1">Donors and staff write <span className="font-mono">#RO{funds.length + 1}</span> in the payment description; add <span className="font-mono">-MED</span>, <span className="font-mono">-FOOD</span>, <span className="font-mono">-LOG</span>… for a budget category.</p>
+            <p className="text-xs text-muted mt-1">Donors and staff write <span className="font-mono">#RO{funds.length + 1}</span> in the payment description; add <span className="font-mono">-MED</span>, <span className="font-mono">-FOOD</span>, <span className="font-mono">-LOG</span>… for a budget category.</p>
           </div>
           <button className="btn btn-primary w-fit" onClick={create} disabled={Boolean(busy)}>{busy === "create" && <Loader2 className="h-4 w-4 animate-spin" />} Publish fund</button>
         </div>
@@ -592,7 +629,7 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
   const { data, reload } = useJson<{ members: TeamMember[] }>("/api/ngo/members");
   const access = useAccess();
   const isAdmin = me.role === "admin";
-  const [form, setForm] = useState({ name: "", title: "", username: "", password: "", role: "user" as "admin" | "user" });
+  const [form, setForm] = useState({ name: "", title: "", username: "", password: "", role: "user" as Role });
   const [created, setCreated] = useState<{ name: string; username: string; password: string } | null>(null);
   const [resetFor, setResetFor] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -639,7 +676,7 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
   return (
     <div className={clsx("grid gap-6", isAdmin && "lg:grid-cols-[minmax(0,1fr)_340px]")}>
       <div className="space-y-3">
-        {msg && <div className={clsx("card p-3 text-sm", msg.bad ? "border-[#f0c4c4] text-critical" : "bg-brand-wash border-[#bfe3dc]")}>{msg.text}</div>}
+        {msg && <div className={clsx("card p-3 text-sm", msg.bad ? "border-bad-line text-critical" : "bg-brand-wash border-brand-line")}>{msg.text}</div>}
         <div className="card divide-y divide-line">
           {!data && <div className="h-32 animate-pulse" />}
           {data?.members.map((m) => (
@@ -649,21 +686,58 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
                   <div className="font-medium flex flex-wrap items-center gap-1.5">
                     {m.name}
                     {m.id === me.id && <span className="text-xs text-muted">(you)</span>}
-                    <Pill tone={m.role === "admin" ? "brand" : "neutral"}>{m.role === "admin" ? "Admin" : "Staff"}</Pill>
+                    <Pill tone={m.role === "admin" ? "brand" : "neutral"}>{roleName(m.role)}{m.role === "donor" && " · read-only"}</Pill>
                     {!m.active && <Pill tone="bad">Deactivated</Pill>}
                   </div>
                   <div className="text-xs text-muted">
                     {m.title}
                     {m.username && <> · <span className="font-mono">{m.username}</span></>}
                   </div>
-                  <div className="text-xs text-ink-2 mt-1">{m.fundIds.length ? `Approver on: ${m.fundIds.map(fundTitle).join(", ")}` : "Not assigned to any fund"}</div>
+                  {m.role === "donor" ? (
+                    <div className="text-xs text-ink-2 mt-1">
+                      {m.viewFundIds?.length ? `Can see: ${m.viewFundIds.map(fundTitle).join(", ")}` : "Can't see any fund yet"} · read-only, no settings
+                      {isAdmin && m.active && (access.data?.funds.length ?? 0) > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1" role="group" aria-label={`Funds ${m.name} can see`}>
+                          {access.data!.funds.map((f) => {
+                            const on = Boolean(m.viewFundIds?.includes(f.id));
+                            return (
+                              <label key={f.id} className="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  disabled={Boolean(busy)}
+                                  onChange={() => {
+                                    const next = on ? (m.viewFundIds ?? []).filter((x) => x !== f.id) : [...(m.viewFundIds ?? []), f.id];
+                                    void post(m.id + "funds", { action: "donor_funds", id: m.id, fundIds: next }, `${m.name} can ${on ? "no longer" : "now"} see ${f.title}`);
+                                  }}
+                                />
+                                {f.title}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-ink-2 mt-1">{m.fundIds.length ? `Approver on: ${m.fundIds.map(fundTitle).join(", ")}` : "Not assigned to any fund"}</div>
+                  )}
                 </div>
                 {isAdmin && m.id !== me.id && (
                   <div className="flex flex-wrap gap-1.5">
                     {m.active && (
-                      <button className="btn btn-ghost !py-1 text-xs" disabled={Boolean(busy)} onClick={() => post(m.id + "role", { action: "update", id: m.id, role: m.role === "admin" ? "user" : "admin" }, m.role === "admin" ? `${m.name} is now staff` : `${m.name} is now an admin`)}>
-                        {m.role === "admin" ? "Make staff" : "Make admin"}
-                      </button>
+                      <select
+                        className="input !w-auto !py-1 text-xs"
+                        value={m.role}
+                        disabled={Boolean(busy)}
+                        aria-label={`Role for ${m.name}`}
+                        onChange={(e) => {
+                          const r = e.target.value as Role;
+                          if (r === "donor" && m.fundIds.length && !window.confirm(`${m.name} will be taken off ${m.fundIds.length} fund${m.fundIds.length === 1 ? "" : "s"} and can only view. Continue?`)) return;
+                          void post(m.id + "role", { action: "update", id: m.id, role: r }, `${m.name} is now ${r === "admin" ? "an admin" : r === "donor" ? "a read-only donor" : "staff"}`);
+                        }}
+                      >
+                        {(["user", "admin", "donor"] as const).map((r) => <option key={r} value={r}>{roleName(r)}</option>)}
+                      </select>
                     )}
                     {m.active && <button className="btn btn-ghost !py-1 text-xs" disabled={Boolean(busy)} onClick={() => { setResetFor(resetFor === m.id ? null : m.id); setNewPassword(suggestPassword()); }}>Reset password</button>}
                     <button className={clsx("btn !py-1 text-xs", m.active ? "btn-danger" : "btn-ghost")} disabled={Boolean(busy)} onClick={() => post(m.id + "act", { action: "update", id: m.id, active: !m.active }, m.active ? `${m.name} was deactivated and removed from their funds` : `${m.name} was reactivated`)}>
@@ -705,21 +779,25 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
             }}
           >
             <input className="input" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-label="Full name" />
-            <input className="input" placeholder="Job title (e.g. Field Officer)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-label="Job title" />
+            <input className="input" placeholder={form.role === "donor" ? "Label (e.g. Donor, Rotary Club of Puri)" : "Job title (e.g. Field Officer)"} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-label="Job title" />
             <input className="input font-mono" placeholder="username" autoComplete="off" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} aria-label="Username" />
             <div className="flex gap-2">
               <input className="input font-mono flex-1 min-w-0" placeholder="Password (8+ characters)" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} aria-label="Password" />
               <button type="button" className="btn btn-ghost !px-2.5 text-xs shrink-0" onClick={() => setForm({ ...form, password: suggestPassword() })}>Suggest</button>
             </div>
             <div className="flex rounded-lg border border-line p-1 text-xs font-semibold">
-              {(["user", "admin"] as const).map((r) => (
+              {(["user", "admin", "donor"] as const).map((r) => (
                 <button type="button" key={r} className={clsx("flex-1 rounded-md py-1.5", form.role === r ? "bg-brand text-white" : "text-ink-2")} onClick={() => setForm({ ...form, role: r })}>
-                  {r === "admin" ? "Admin" : "Staff"}
+                  {roleName(r)}
                 </button>
               ))}
             </div>
             <p className="text-xs text-muted">
-              {form.role === "admin" ? "Admins manage the team, fund assignments, funds and vendors." : "Staff start with no funds. Assign them under Funds & access, or they can ask to join a fund."}
+              {form.role === "admin"
+                ? "Admins manage the team, fund assignments, funds and vendors."
+                : form.role === "donor"
+                  ? "Donors get read-only access to the funds you tick for them after creating the login: money flow, transactions, funds and Copilot answers, with private details redacted. No settings, sources or audit log."
+                  : "Staff start with no funds. Assign them under Funds & access, or they can ask to join a fund."}
             </p>
             <button className="btn btn-primary w-full" disabled={Boolean(busy) || !form.name.trim() || !form.username.trim() || form.password.length < 8}>
               {busy === "create" && <Loader2 className="h-4 w-4 animate-spin" />} Create login

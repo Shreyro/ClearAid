@@ -3,6 +3,7 @@ import { anonymiseBankLine } from "./anonymise";
 import { audit } from "./audit";
 import { newId, nowIso } from "./db";
 import { appendLedger } from "./ledger";
+import { matchOnImport } from "./payments";
 import { fmt } from "./money";
 import type { AuditEntry, BankAccount, BankAllocation, BankReceipt, BankTxn, Category, DB, Fund, LedgerEntry, NgoControls, PendingTag, StatementImport } from "./types";
 import { CATEGORIES } from "./types";
@@ -236,6 +237,21 @@ function classify(db: DB, account: BankAccount, t: BankTxn, idx: Map<string, Fun
   return [];
 }
 
+/** Put a line that was unlinked from a declared payment back through tracking-code matching. */
+export function reclassify(db: DB, t: BankTxn) {
+  const account = db.bankAccounts.find((a) => a.id === t.accountId);
+  if (!account) return [];
+  t.status = "untagged";
+  t.paymentId = undefined;
+  t.allocations = [];
+  t.tagSource = undefined;
+  t.taggedBy = undefined;
+  t.taggedByName = undefined;
+  t.taggedAt = undefined;
+  t.reason = undefined;
+  return classify(db, account, t, codeIndex(db, account.ngoId), undefined, false);
+}
+
 /**
  * Add parsed rows to an account. Rows already imported are skipped, the rest
  * are anonymised and matched against tracking codes. Call inside `mutate`.
@@ -291,7 +307,8 @@ export function ingestRows(
       history: [],
       createdAt: meta.at ?? nowIso(),
     };
-    entries.push(...classify(db, account, t, idx, undefined, true));
+    // The bank side of a payment staff already declared is matched, not posted a second time.
+    if (!matchOnImport(db, account.ngoId, t)) entries.push(...classify(db, account, t, idx, undefined, true));
     if (t.status === "auto_tagged") imp.autoTagged += 1;
     if (safe.found.length) imp.anonymised = (imp.anonymised ?? 0) + 1;
     imp.imported += 1;
@@ -518,6 +535,10 @@ export function scoreReceipt(t: BankTxn, x: NonNullable<BankReceipt["extraction"
 export function canSeeTxn(t: BankTxn, member: { id: string; role: string }, db: DB) {
   if (member.role === "admin") return true;
   if (t.status === "untagged" || t.status === "fee_unallocated") return true;
+  if (t.paymentId) {
+    const p = db.payments?.find((x) => x.id === t.paymentId);
+    return Boolean(p && db.funds.find((f) => f.id === p.fundId)?.assignees.includes(member.id));
+  }
   return t.allocations.some((a) => db.funds.find((f) => f.id === a.fundId)?.assignees.includes(member.id));
 }
 
@@ -558,6 +579,10 @@ export function txnView(db: DB, t: BankTxn, me?: { id: string; role: string }) {
     },
     receipts: (t.receipts ?? []).map((r) => ({ ...r, fileName: db.files.find((f) => f.id === r.fileId)?.name ?? "receipt", url: `/api/files/${r.fileId}` })),
     missingReceipt: account ? missingReceipt(db, t, account.ngoId) : false,
+    payment: (() => {
+      const p = t.paymentId ? db.payments?.find((x) => x.id === t.paymentId) : undefined;
+      return p && { id: p.id, payee: p.publicPayee, date: p.date, byName: p.byName, fundTitle: fundTitle(p.fundId), receiptUrl: p.receipt ? `/api/files/${p.receipt.fileId}` : undefined };
+    })(),
     history: t.history,
     ageDays: Math.floor((Date.now() - Date.parse(t.createdAt)) / 86400_000),
   };

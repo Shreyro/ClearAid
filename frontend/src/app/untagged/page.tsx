@@ -24,7 +24,8 @@ type Txn = {
   anonymised: string[];
   reference?: string;
   isFee: boolean;
-  status: "auto_tagged" | "tagged" | "untagged" | "fee_unallocated";
+  status: "auto_tagged" | "tagged" | "untagged" | "fee_unallocated" | "matched";
+  payment?: { id: string; payee: string; date: string; byName: string; fundTitle: string; receiptUrl?: string };
   untaggedReason?: string;
   allocations: Alloc[];
   tagSource?: "code" | "manual" | "fee_policy";
@@ -74,6 +75,7 @@ const STATUS: Record<Txn["status"], { label: string; tone: "good" | "warn" | "ne
   tagged: { label: "Tagged by hand", tone: "brand" },
   untagged: { label: "Needs a tag", tone: "warn" },
   fee_unallocated: { label: "Fee · general fund", tone: "neutral" },
+  matched: { label: "Matched to a declared payment", tone: "good" },
 };
 
 export default function UntaggedPage() {
@@ -148,7 +150,7 @@ export default function UntaggedPage() {
               className={clsx("px-3 py-2 inline-flex items-center gap-1.5", status === k ? "bg-brand-wash text-brand-ink" : "bg-surface text-ink-2")}
             >
               {l}
-              {data && <span className={clsx("rounded-full px-1.5 tnum", (k === "untagged" || k === "pending" || k === "receipts") && data.counts[k] ? "bg-[#fff4d6] text-[#7a5200]" : "bg-[#efeee9]")}>{data.counts[k]}</span>}
+              {data && <span className={clsx("rounded-full px-1.5 tnum", (k === "untagged" || k === "pending" || k === "receipts") && data.counts[k] ? "bg-warn-wash text-warn-ink" : "bg-hover")}>{data.counts[k]}</span>}
             </button>
           ))}
         </div>
@@ -188,7 +190,7 @@ export default function UntaggedPage() {
       )}
 
       {msg && (
-        <div role="status" className="card p-3 text-sm mb-3 bg-brand-wash border-[#bfe3dc] flex items-start justify-between gap-3">
+        <div role="status" className="card p-3 text-sm mb-3 bg-brand-wash border-brand-line flex items-start justify-between gap-3">
           {msg}
           <button onClick={() => setMsg(null)} aria-label="Dismiss"><X className="h-4 w-4" /></button>
         </div>
@@ -224,31 +226,31 @@ export default function UntaggedPage() {
             <tbody>
               {rows.map((t) => (
                 <Fragment key={t.id}>
-                  <tr className={clsx("border-b border-line align-top", open === t.id && "bg-[#fafaf7]")}>
+                  <tr className={clsx("border-b border-line align-top", open === t.id && "bg-sunken")}>
                     <td className="pl-4 py-3"><input type="checkbox" aria-label={`Select ${t.description}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} /></td>
-                    <td className="px-3 py-3 tnum whitespace-nowrap">{new Date(`${t.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}<div className="text-[11px] text-muted truncate max-w-[10rem]" title={t.accountName}>{t.accountName}</div></td>
+                    <td className="px-3 py-3 tnum whitespace-nowrap">{new Date(`${t.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}<div className="text-xs text-muted truncate max-w-[10rem]" title={t.accountName}>{t.accountName}</div></td>
                     <td className="px-3 py-3 max-w-[28rem]">
                       <div className="font-medium break-words">{t.description}</div>
-                      <div className="text-[11px] text-muted">
+                      <div className="text-xs text-muted">
                         {[t.counterparty, t.reference && <span key="r" className="font-mono">{t.reference}</span>].filter(Boolean).map((x, i) => <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>)}
                       </div>
                       {t.anonymised.length > 0 && <div className="mt-0.5"><AnonymisedNote kinds={t.anonymised} /></div>}
-                      {t.untaggedReason && t.status !== "auto_tagged" && t.status !== "tagged" && <div className="text-[11px] text-[#7a5200] mt-0.5">{t.untaggedReason}{t.status === "untagged" && t.ageDays > 7 ? ` · waiting ${t.ageDays} days` : ""}</div>}
-                      {t.status === "tagged" && t.reason && <div className="text-[11px] text-ink-2 mt-0.5">“{t.reason}” · {t.taggedByName}{t.approvedByName ? `, approved by ${t.approvedByName}` : ""}</div>}
-                      {t.tagSource === "fee_policy" && t.reason && <div className="text-[11px] text-ink-2 mt-0.5">{t.reason}</div>}
+                      {t.untaggedReason && t.status !== "auto_tagged" && t.status !== "tagged" && <div className="text-xs text-warn-ink mt-0.5">{t.untaggedReason}{t.status === "untagged" && t.ageDays > 7 ? ` · waiting ${t.ageDays} days` : ""}</div>}
+                      {t.status === "tagged" && t.reason && <div className="text-xs text-ink-2 mt-0.5">“{t.reason}” · {t.taggedByName}{t.approvedByName ? `, approved by ${t.approvedByName}` : ""}</div>}
+                      {t.tagSource === "fee_policy" && t.reason && <div className="text-xs text-ink-2 mt-0.5">{t.reason}</div>}
                       {t.pending && (
-                        <div className="text-[11px] text-[#7a5200] mt-0.5 flex items-center gap-1">
+                        <div className="text-xs text-warn-ink mt-0.5 flex items-center gap-1">
                           <Clock className="h-3 w-3" /> {t.pending.byName} wants to {t.pending.kind} this: {t.pending.allocations.map((a) => a.fundTitle).join(", ") || "back to the queue"}
                         </div>
                       )}
                       {(t.receipts.length > 0 || t.missingReceipt) && (
-                        <div className={clsx("text-[11px] mt-0.5 flex items-center gap-1", t.missingReceipt ? "text-[#7a5200]" : "text-ink-2")}>
+                        <div className={clsx("text-xs mt-0.5 flex items-center gap-1", t.missingReceipt ? "text-warn-ink" : "text-ink-2")}>
                           <Receipt className="h-3 w-3" /> {t.receipts.length ? `${t.receipts.length} receipt${t.receipts.length > 1 ? "s" : ""}` : "Receipt needed"}
                           {t.receipts.some((r) => r.codeMismatch) && <span className="text-critical"> · code on receipt differs</span>}
                         </div>
                       )}
                     </td>
-                    <td className={clsx("px-3 py-3 text-right tnum font-semibold whitespace-nowrap", t.amount < 0 ? "text-[#9b3d17]" : "text-good-ink")}>{t.amount < 0 ? "−" : "+"}{usd(Math.abs(t.amount))}</td>
+                    <td className={clsx("px-3 py-3 text-right tnum font-semibold whitespace-nowrap", t.amount < 0 ? "text-out-ink" : "text-good-ink")}>{t.amount < 0 ? "−" : "+"}{usd(Math.abs(t.amount))}</td>
                     <td className="px-3 py-3">
                       {t.allocations.length ? (
                         <ul className="space-y-0.5">
@@ -261,22 +263,27 @@ export default function UntaggedPage() {
                           ))}
                         </ul>
                       ) : (
-                        <span className="text-xs text-muted">{t.isFee ? "General fund" : "—"}</span>
+                        <span className="text-xs text-muted">{t.payment ? t.payment.fundTitle : t.isFee ? "General fund" : "—"}</span>
                       )}
                     </td>
                     <td className="px-3 py-3">
                       {t.pending ? <Pill tone="warn">Waiting for approval</Pill> : t.tagSource === "fee_policy" ? <Pill tone="neutral">Fee policy</Pill> : <Pill tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Pill>}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      <button className={clsx("btn !py-1 text-xs", t.pending?.canApprove || (!t.allocations.length && !t.pending) ? "btn-primary" : "btn-ghost")} onClick={() => setOpen(open === t.id ? null : t.id)}>
-                        {open === t.id ? <X className="h-3.5 w-3.5" /> : t.pending ? <Clock className="h-3.5 w-3.5" /> : <Tag className="h-3.5 w-3.5" />} {t.pending ? (t.pending.canApprove ? "Review" : "Pending") : t.allocations.length ? "Details" : "Tag"}
+                      <button className={clsx("btn !py-1 text-xs", t.pending?.canApprove || (!t.allocations.length && !t.pending && !t.payment) ? "btn-primary" : "btn-ghost")} onClick={() => setOpen(open === t.id ? null : t.id)}>
+                        {open === t.id ? <X className="h-3.5 w-3.5" /> : t.pending ? <Clock className="h-3.5 w-3.5" /> : <Tag className="h-3.5 w-3.5" />} {t.pending ? (t.pending.canApprove ? "Review" : "Pending") : t.allocations.length || t.payment ? "Details" : "Tag"}
                       </button>
                     </td>
                   </tr>
                   {open === t.id && (
-                    <tr className="border-b border-line bg-[#fafaf7]">
+                    <tr className="border-b border-line bg-sunken">
                       <td colSpan={7} className="px-4 pb-4">
-                        {t.pending ? <PendingPanel t={t} onDone={done} /> : <TagPanel t={t} funds={data.funds} isAdmin={me.role === "admin"} threshold={data.controls.tagApprovalThreshold} onDone={done} />}
+                        {t.payment ? (
+                          <div className="text-sm pt-2">
+                            This is the bank side of the payment {t.payment.byName} declared to <span className="font-medium">{t.payment.payee}</span> on {t.payment.date}, already on <span className="font-medium">{t.payment.fundTitle}</span>, so it isn&apos;t posted again.
+                            {t.payment.receiptUrl && <> <a href={t.payment.receiptUrl} target="_blank" rel="noreferrer" className="underline">See the receipt</a>.</>} If it&apos;s the wrong line, unlink it under <Link href="/transactions" className="underline">Transactions → Declared payments</Link>.
+                          </div>
+                        ) : t.pending ? <PendingPanel t={t} onDone={done} /> : <TagPanel t={t} funds={data.funds} isAdmin={me.role === "admin"} threshold={data.controls.tagApprovalThreshold} onDone={done} />}
                         <ReceiptsPanel
                           t={t}
                           onChanged={async (m) => {
@@ -385,9 +392,9 @@ function TagPanel({ t, funds, isAdmin, threshold, onDone }: { t: Txn; funds: Fun
         {err && <span className="text-sm text-critical" role="alert">{err}</span>}
       </div>
       {t.allocations.length > 0 ? (
-        <p className="text-[11px] text-muted">A retag goes to a second person first. Once approved it never edits history: reversing entries are added to the old fund&apos;s ledger, then the new allocation is posted.</p>
+        <p className="text-xs text-muted">A retag goes to a second person first. Once approved it never edits history: reversing entries are added to the old fund&apos;s ledger, then the new allocation is posted.</p>
       ) : total >= threshold ? (
-        <p className="text-[11px] text-muted">This is {usd(threshold)} or more, so a second person has to approve the tag before it reaches the ledger.</p>
+        <p className="text-xs text-muted">This is {usd(threshold)} or more, so a second person has to approve the tag before it reaches the ledger.</p>
       ) : null}
       {t.history.length > 0 && (
         <div className="text-xs text-ink-2">
@@ -475,7 +482,7 @@ function PendingPanel({ t, onDone }: { t: Txn; onDone: (m: string) => Promise<vo
   }
   return (
     <div className="pt-3 grid gap-3 text-sm">
-      <div className="rounded-lg border border-[#f0d9a8] bg-[#fffaf0] p-3">
+      <div className="rounded-lg border border-warn-line bg-warn-soft p-3">
         <div className="font-semibold">
           {p.byName} wants to {p.kind} this {t.amount < 0 ? "payment" : "receipt"} · {new Date(p.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         </div>
@@ -484,7 +491,7 @@ function PendingPanel({ t, onDone }: { t: Txn; onDone: (m: string) => Promise<vo
           {p.kind === "untag" ? "Send it back to the Untagged queue." : <>Proposed: {p.allocations.map((a) => `${usd(a.amount)} → ${a.fundTitle}${a.category ? ` (${CAT_LABEL[a.category] ?? a.category})` : ""}`).join(", ")}.</>}
         </div>
         <div className="mt-1">Reason: “{p.reason}”</div>
-        <div className="mt-1 text-[11px] text-muted">{p.why}. Nothing is posted to a ledger until it&apos;s approved.</div>
+        <div className="mt-1 text-xs text-muted">{p.why}. Nothing is posted to a ledger until it&apos;s approved.</div>
       </div>
       {p.canApprove || p.mine ? (
         <div className="flex flex-wrap items-end gap-2">
@@ -504,7 +511,7 @@ function PendingPanel({ t, onDone }: { t: Txn; onDone: (m: string) => Promise<vo
       ) : (
         <p className="text-ink-2">An admin, or someone else assigned to every fund involved, has to approve this.</p>
       )}
-      {p.mine && <p className="text-[11px] text-muted">You made this change, so someone else has to approve it.</p>}
+      {p.mine && <p className="text-xs text-muted">You made this change, so someone else has to approve it.</p>}
       {err && <span className="text-sm text-critical" role="alert">{err}</span>}
     </div>
   );

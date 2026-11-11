@@ -130,8 +130,20 @@ export const isAssigned = (fund: Fund, memberId?: string) => Boolean(memberId &&
 export function ngoCanSeeFund(session: Session, fund: Fund) {
   if (session.role !== "ngo") return false;
   const m = ngoMember(session.id);
-  if (!m || m.ngoId !== fund.ngoId) return false;
+  if (!m || m.ngoId !== fund.ngoId || m.role === "donor") return false;
   return m.role === "admin" || isAssigned(fund, m.id);
+}
+
+/** Is this a read-only donor login? */
+export const isDonor = (session: Session) => session.role === "ngo" && session.memberRole === "donor";
+
+/**
+ * Can this session open the fund at all? Staff need full access (above); donors
+ * only the funds an admin assigned to them, and only ever the redacted views.
+ */
+export function canViewFund(session: Session, fund: Fund) {
+  if (ngoCanSeeFund(session, fund)) return true;
+  return isDonor(session) && ngoMember(session.id)?.ngoId === fund.ngoId && Boolean(session.id && fund.viewers?.includes(session.id));
 }
 
 /** Active approvers on a fund (inactive members can't sign). */
@@ -140,14 +152,14 @@ export function activeAssignees(db: DB, fund: Fund): NgoMember[] {
 }
 
 /** Funds this session may see in full. */
-export const visibleFunds = (db: DB, session: Session) => db.funds.filter((f) => ngoCanSeeFund(session, f));
+export const visibleFunds = (db: DB, session: Session) => db.funds.filter((f) => canViewFund(session, f));
 
 /** Resolve a fund by id or slug and check the signed-in member may see it. */
 export async function requireFundAccess(idOrSlug: string) {
   const session = await requireRole("ngo");
   const fund = getDb().funds.find((f) => f.id === idOrSlug || f.slug === idOrSlug);
   if (!fund) throw new HttpError(404, "Fund not found");
-  if (!ngoCanSeeFund(session, fund)) throw new HttpError(403, "You're not assigned to this fund. Ask an admin for access.");
+  if (!canViewFund(session, fund)) throw new HttpError(403, "You're not assigned to this fund. Ask an admin for access.");
   return { fund, session };
 }
 

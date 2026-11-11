@@ -4,8 +4,9 @@ import { publish } from "@/lib/events";
 import { recordDonation } from "@/lib/funds";
 import { handle, json } from "@/lib/http";
 import { fmt, toCents } from "@/lib/money";
-import { actorOf, getSession, HttpError, ngoMember, requireFundAccess, requireNgo, visibleFunds } from "@/lib/session";
+import { actorOf, getSession, HttpError, isDonor, ngoMember, requireFundAccess, requireNgo, visibleFunds } from "@/lib/session";
 import { movementView } from "@/lib/movements";
+import { paypalAccountsOf } from "@/lib/paypal-accounts";
 
 const csvCell = (v: unknown) => {
   if (typeof v === "number") return String(v);
@@ -27,13 +28,17 @@ export const GET = handle(async (req: Request) => {
   const to = q.get("to") ? Date.parse(q.get("to")!) + 86400_000 : null;
   const dir = q.get("direction");
   const text = q.get("q")?.toLowerCase().trim();
+  const account = isDonor(s) ? null : q.get("account");
 
   const rows = db.ledger
     .filter((e) => titles.has(e.fundId))
     .filter((e) => (from === null || Date.parse(e.ts) >= from) && (to === null || Date.parse(e.ts) < to))
     .map((e) => movementView(db, e, titles.get(e.fundId)!))
+    // Donors don't see other people's contact details.
+    .map((t) => (isDonor(s) ? { ...t, counterpartyEmail: undefined, detailHref: t.type === "expense" ? undefined : t.detailHref } : t))
     // Default: money movements only. "all" adds notices (fund opened, request rejected…).
     .filter((t) => (dir === "all" ? true : dir === "in" || dir === "out" || dir === "notice" ? t.direction === dir : t.direction !== "notice"))
+    .filter((t) => !account || t.account?.key === account)
     .filter((t) => !text || [t.from, t.to, t.memo, t.paypalRef, t.via, t.typeLabel].some((v) => v?.toLowerCase().includes(text)))
     .sort((a, b) => b.ts.localeCompare(a.ts));
 
@@ -51,7 +56,14 @@ export const GET = handle(async (req: Request) => {
       headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="clearaid-transactions-${nowIso().slice(0, 10)}.csv"` },
     });
   }
-  return json({ transactions: rows.slice(0, 2000), totals, funds: all.map((f) => ({ id: f.id, title: f.title })) });
+  // Staff can filter by the account money came through; donors don't see the NGO's account list.
+  const accounts = isDonor(s)
+    ? []
+    : [
+        ...paypalAccountsOf(db, me.ngoId).map((a) => ({ key: `paypal:${a.id}`, name: a.name, kind: "paypal" as const })),
+        ...db.bankAccounts.filter((a) => a.ngoId === me.ngoId).map((a) => ({ key: `bank:${a.id}`, name: a.name, kind: "bank" as const })),
+      ];
+  return json({ transactions: rows.slice(0, 2000), totals, funds: all.map((f) => ({ id: f.id, title: f.title })), accounts });
 });
 
 /**

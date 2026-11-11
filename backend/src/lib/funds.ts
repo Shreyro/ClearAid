@@ -4,7 +4,8 @@ import { appendLedger, verifyChain } from "./ledger";
 import { audit, SYSTEM_ACTOR } from "./audit";
 import { fmt, splitProRata } from "./money";
 import { publish } from "./events";
-import { refundCapture, sendVendorPayout } from "./paypal";
+import { sendVendorPayout } from "./paypal";
+import { fundConn } from "./paypal-accounts";
 import type { Category, DB, Donation, Donor, Fund, LedgerEntry, Withdrawal } from "./types";
 import { categoryLabel } from "./types";
 
@@ -34,7 +35,9 @@ export function fundStats(db: DB, fund: Fund) {
   const bankIn = signed("bank_in");
   const bankOut = -signed("bank_out");
   const raised = sum(["donation", "carry_forward_in"]) + bankIn;
-  const spent = sum(["withdrawal"]) + bankOut;
+  // Declared payments are signed too: voiding one posts the money back.
+  const declaredOut = -signed("expense");
+  const spent = sum(["withdrawal"]) + bankOut + declaredOut;
   const refunded = sum(["refund"]);
   const carriedOut = sum(["carry_forward_out"]);
   const balance = raised - spent - refunded - carriedOut;
@@ -115,6 +118,8 @@ export function recordDonation(
     fundId: string;
     amount: number;
     captureId: string;
+    /** PayPal account the money landed in (omit for the default account). */
+    accountId?: string;
     orderId: string;
     live: boolean;
     donorEmail?: string;
@@ -135,6 +140,7 @@ export function recordDonation(
 
   db.captures.push({
     id: args.captureId,
+    accountId: args.accountId,
     orderId: args.orderId,
     donorId: donor.id,
     amount: args.amount,
@@ -220,7 +226,7 @@ export async function payWithdrawal(withdrawalId: string, actor: string) {
     }
     let payout;
     try {
-      payout = await sendVendorPayout({
+      payout = await sendVendorPayout(fundConn(db, fund), {
         withdrawalId: w.id,
         email: vendor.paypalEmail,
         amount: w.amount,
@@ -316,6 +322,14 @@ export function donorImpact(db: DB, donorId: string) {
 }
 
 // --------------------------------------------------------- Fund closure ----
+//
+// Only an admin closes a fund, in two steps: "start" stops new money coming in,
+// "finalize" closes it. At either point the admin decides where the money left
+// over goes: any amount to any other open fund of the same NGO. Whatever isn't
+// moved stays in the bank and stays on this fund's books as held money, so the
+// dashboard keeps tracking it (and an admin can still move it later).
+
+export type LeftoverTransfer = { fundId: string; amount: number };
 
 export function startClosure(fundId: string, actor: string) {
   const entry = mutate((db) => {
@@ -328,7 +342,7 @@ export function startClosure(fundId: string, actor: string) {
       fundId: fund.id,
       type: "fund_closing",
       amount: 0,
-      memo: `Fund closing. ${fmt(left)} unspent will be refunded or carried forward under the fund's leftover policy.`,
+      memo: `Fund closing. ${fmt(left)} is still held; an admin decides whether it moves to other funds or stays in the bank on this fund.`,
       actor,
     });
   });
@@ -336,162 +350,115 @@ export function startClosure(fundId: string, actor: string) {
   publish({ kind: "fund", fundId });
 }
 
-export function setElection(donorId: string, fundId: string, choice: "refund" | "carry_forward", targetFundId?: string) {
-  return mutate((db) => {
-    const fund = findFund(db, fundId);
-    if (!fund || fund.status !== "closing") throw new Error("This fund is not collecting leftover choices");
-    if (choice === "carry_forward") {
-      const target = targetFundId ? findFund(db, targetFundId) : undefined;
-      if (!target || target.status !== "active" || target.id === fund.id) throw new Error("Pick an active fund to carry forward to");
-    }
-    const ds = db.donations.filter((d) => d.donorId === donorId && d.fundId === fund.id);
-    if (!ds.length) throw new Error("No donations to this fund");
-    for (const d of ds) d.election = { choice, targetFundId: choice === "carry_forward" ? targetFundId : undefined, at: nowIso() };
-    return ds.length;
+/** Open funds of the same NGO that leftover money can move to. */
+export const leftoverTargets = (db: DB, fund: Fund) => db.funds.filter((f) => f.ngoId === fund.ngoId && f.id !== fund.id && f.status === "active");
+
+/** Check a set of transfers against the fund's held money; throws a readable error. */
+function checkTransfers(db: DB, fund: Fund, transfers: LeftoverTransfer[]) {
+  const targets = new Map(leftoverTargets(db, fund).map((f) => [f.id, f]));
+  const seen = new Set<string>();
+  for (const t of transfers) {
+    if (!Number.isInteger(t.amount) || t.amount <= 0) throw new Error("Each amount must be more than $0.00");
+    if (!targets.has(t.fundId)) throw new Error("Money can only move to another open fund");
+    if (seen.has(t.fundId)) throw new Error(`${targets.get(t.fundId)!.title} is listed twice`);
+    seen.add(t.fundId);
+  }
+  const total = transfers.reduce((a, t) => a + t.amount, 0);
+  const held = fundStats(db, fund).balance;
+  if (total > held) throw new Error(`That is ${fmt(total)}, but only ${fmt(held)} is held`);
+  return targets;
+}
+
+/**
+ * Move part of a fund's held money to another fund. PayPal gifts still unspent
+ * move with it pro-rata, so each donor can still follow their share in the new
+ * fund; any part above that is bank money, which isn't tied to a donor.
+ */
+function moveOne(db: DB, fund: Fund, target: Fund, amount: number, actor: string) {
+  const pool = db.donations.filter((d) => d.fundId === fund.id && donationAvailable(d) > 0);
+  const parts = splitProRata(Math.min(amount, pool.reduce((a, d) => a + donationAvailable(d), 0)), pool.map(donationAvailable));
+  const byDonor = new Map<string, { amount: number; captureIds: string[] }>();
+  pool.forEach((d, i) => {
+    if (parts[i] <= 0) return;
+    d.carriedOut += parts[i];
+    const cur = byDonor.get(d.donorId) ?? { amount: 0, captureIds: [] };
+    cur.amount += parts[i];
+    cur.captureIds.push(...d.captureIds);
+    byDonor.set(d.donorId, cur);
+  });
+  for (const [donorId, v] of byDonor) {
+    db.donations.push({
+      id: newId("don"),
+      fundId: target.id,
+      donorId,
+      amount: v.amount,
+      source: "carry_forward",
+      captureIds: [...new Set(v.captureIds)],
+      fromFundId: fund.id,
+      attributed: 0,
+      refunded: 0,
+      carriedOut: 0,
+      createdAt: nowIso(),
+    });
+  }
+  return [
+    appendLedger(db, { fundId: fund.id, type: "carry_forward_out", amount: -amount, memo: `Leftover money moved to "${target.title}" by an admin`, actor }),
+    appendLedger(db, { fundId: target.id, type: "carry_forward_in", amount, memo: `Leftover money moved in from "${fund.title}"`, actor }),
+  ];
+}
+
+/** Move held money out of a closing or closed fund. */
+export function moveLeftover(fundId: string, transfers: LeftoverTransfer[], actor: string) {
+  return withLock(`fund:${fundId}`, async () => {
+    const entries = mutate((db) => {
+      const fund = findFund(db, fundId)!;
+      if (fund.status === "active") throw new Error("Start closing the fund before moving its leftover money");
+      if (!transfers.length) throw new Error("Choose a fund and an amount");
+      const targets = checkTransfers(db, fund, transfers);
+      return transfers.flatMap((t) => moveOne(db, fund, targets.get(t.fundId)!, t.amount, actor));
+    });
+    entries.forEach((entry) => publish({ kind: "ledger", fundId: entry.fundId, entry }));
+    for (const id of new Set(entries.map((e) => e.fundId))) publish({ kind: "fund", fundId: id });
+    return { moved: transfers.reduce((a, t) => a + t.amount, 0), held: fundStats(getDb(), findFund(getDb(), fundId)!).balance };
   });
 }
 
-/** Execute every donor's leftover choice (or the policy default) and close the fund. */
-export async function finalizeClosure(fundId: string, actor: string) {
+/** Close the fund: make the admin's transfers, then keep whatever is left on the fund as held money. */
+export function finalizeClosure(fundId: string, transfers: LeftoverTransfer[], actor: string) {
   return withLock(`fund:${fundId}`, async () => {
-    const db = getDb();
-    const fund = findFund(db, fundId)!;
-    if (fund.status !== "closing") throw new Error("Fund must be in closing state");
-    const results = { refunded: 0, refunds: 0, carried: 0, carries: 0, errors: [] as string[] };
-
-    // Group leftovers per donor so each donor gets one refund/carry entry.
-    const byDonor = new Map<string, Donation[]>();
-    for (const d of db.donations.filter((x) => x.fundId === fund.id && donationAvailable(x) > 0)) {
-      byDonor.set(d.donorId, [...(byDonor.get(d.donorId) ?? []), d]);
-    }
-
-    for (const [donorId, ds] of byDonor) {
-      const donor = db.donors.find((x) => x.id === donorId);
-      const choice = ds[0].election?.choice ?? fund.policy.leftoverDefault;
-      const targetId = ds[0].election?.targetFundId ?? fund.carryForwardFundId;
-      const target = targetId ? findFund(db, targetId) : undefined;
-
-      if (choice === "carry_forward" && target && target.status === "active") {
-        const total = ds.reduce((a, d) => a + donationAvailable(d), 0);
-        const entries = mutate((db2) => {
-          for (const d of ds) d.carriedOut += donationAvailable(d);
-          db2.donations.push({
-            id: newId("don"),
-            fundId: target.id,
-            donorId,
-            amount: total,
-            source: "carry_forward",
-            captureIds: [...new Set(ds.flatMap((d) => d.captureIds))],
-            fromFundId: fund.id,
-            attributed: 0,
-            refunded: 0,
-            carriedOut: 0,
-            createdAt: nowIso(),
-          });
-          return [
-            appendLedger(db2, {
-              fundId: fund.id,
-              type: "carry_forward_out",
-              amount: -total,
-              memo: `Leftover share carried forward to "${target.title}" at the donor's request`,
-              actor: donorLabel(donor),
-            }),
-            appendLedger(db2, {
-              fundId: target.id,
-              type: "carry_forward_in",
-              amount: total,
-              memo: `Leftover share carried forward from "${fund.title}"`,
-              actor: donorLabel(donor),
-            }),
-          ];
-        });
-        entries.forEach((entry) => publish({ kind: "ledger", fundId: entry.fundId, entry }));
-        results.carried += total;
-        results.carries += 1;
-        continue;
-      }
-
-      // Refund: walk the donor's captures, never refunding more than PayPal holds.
-      let owed = ds.reduce((a, d) => a + donationAvailable(d), 0);
-      const captureIds = [...new Set(ds.flatMap((d) => d.captureIds))];
-      const refundIds: string[] = [];
-      let refundedTotal = 0;
-      for (const capId of captureIds) {
-        if (owed <= 0) break;
-        const cap = db.captures.find((c) => c.id === capId);
-        if (!cap) continue;
-        const amt = Math.min(owed, cap.amount - cap.refunded);
-        if (amt <= 0) continue;
-        try {
-          const r = await refundCapture(cap.id, amt, `Unspent share of your gift to ${fund.title}. Thank you.`);
-          mutate(() => {
-            cap.refunded += amt;
-          });
-          refundIds.push(r.id);
-          refundedTotal += amt;
-          owed -= amt;
-        } catch (e) {
-          results.errors.push(`${donorLabel(donor)}: ${(e as Error).message}`);
-        }
-      }
-      if (refundedTotal > 0) {
-        const entry = mutate((db2) => {
-          let remaining = refundedTotal;
-          for (const d of ds) {
-            const take = Math.min(remaining, donationAvailable(d));
-            d.refunded += take;
-            remaining -= take;
-          }
-          return appendLedger(db2, {
-            fundId: fund.id,
-            type: "refund",
-            amount: -refundedTotal,
-            memo: "Pro-rata refund of unspent funds via PayPal",
-            actor: donorLabel(donor),
-            paypalRef: refundIds.join(","),
-          });
-        });
-        publish({ kind: "ledger", fundId: fund.id, entry });
-        results.refunded += refundedTotal;
-        results.refunds += 1;
-      }
-    }
-
-    const entry = mutate((db2) => {
-      const f = findFund(db2, fundId)!;
-      f.status = "closed";
-      f.closedAt = nowIso();
-      return appendLedger(db2, {
+    const result = mutate((db) => {
+      const fund = findFund(db, fundId)!;
+      if (fund.status !== "closing") throw new Error("Start closing the fund first");
+      const targets = checkTransfers(db, fund, transfers);
+      const moves = transfers.flatMap((t) => moveOne(db, fund, targets.get(t.fundId)!, t.amount, actor));
+      const moved = transfers.reduce((a, t) => a + t.amount, 0);
+      const held = fundStats(db, fund).balance;
+      fund.status = "closed";
+      fund.closedAt = nowIso();
+      const into = transfers.map((t) => targets.get(t.fundId)!.title);
+      const closed = appendLedger(db, {
         fundId,
         type: "fund_closed",
         amount: 0,
-        memo: `Fund closed. ${fmt(results.refunded)} refunded to ${results.refunds} donors, ${fmt(results.carried)} carried forward for ${results.carries} donors.`,
+        memo: `Fund closed. ${moved ? `${fmt(moved)} moved to ${into.join(", ")}. ` : ""}${held ? `${fmt(held)} stays in the bank, held on this fund.` : "Nothing is left on the fund."}`,
         actor,
       });
+      return { entries: [...moves, closed], moved, held, into };
     });
-    publish({ kind: "ledger", fundId, entry });
-    publish({ kind: "fund", fundId });
-    return results;
+    result.entries.forEach((entry) => publish({ kind: "ledger", fundId: entry.fundId, entry }));
+    for (const id of new Set(result.entries.map((e) => e.fundId))) publish({ kind: "fund", fundId: id });
+    return { moved: result.moved, held: result.held, into: result.into };
   });
 }
 
-/** Leftover preview for a closing fund. */
+/** What an admin needs to decide where a fund's leftover money goes. */
 export function closurePreview(db: DB, fund: Fund) {
-  const ds = db.donations.filter((d) => d.fundId === fund.id && donationAvailable(d) > 0);
-  const donors = new Map<string, { leftover: number; choice: string }>();
-  for (const d of ds) {
-    const cur = donors.get(d.donorId) ?? { leftover: 0, choice: d.election?.choice ?? `default:${fund.policy.leftoverDefault}` };
-    cur.leftover += donationAvailable(d);
-    donors.set(d.donorId, cur);
-  }
-  const rows = [...donors.values()];
-  const sumBy = (pred: (c: string) => boolean) => rows.filter((r) => pred(r.choice)).reduce((a, r) => a + r.leftover, 0);
+  const s = fundStats(db, fund);
   return {
-    donors: rows.length,
-    leftover: rows.reduce((a, r) => a + r.leftover, 0),
-    electedRefund: sumBy((c) => c === "refund"),
-    electedCarry: sumBy((c) => c === "carry_forward"),
-    undecided: sumBy((c) => c.startsWith("default:")),
-    defaultChoice: fund.policy.leftoverDefault,
+    held: s.balance,
+    movedOut: s.carriedOut,
+    /** Part of the held money that is still-unspent PayPal gifts (the rest came in through the bank). */
+    fromDonors: db.donations.filter((d) => d.fundId === fund.id).reduce((a, d) => a + donationAvailable(d), 0),
+    targets: leftoverTargets(db, fund).map((f) => ({ id: f.id, title: f.title, slug: f.slug, accent: f.accent })),
   };
 }

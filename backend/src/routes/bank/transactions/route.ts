@@ -23,7 +23,7 @@ const FILTERS: Record<string, (t: BankTxn, db: DB, ngoId: string) => boolean> = 
   pending: (t) => Boolean(t.pending),
   receipts: (t, db, ngoId) => missingReceipt(db, t, ngoId),
   fees: (t) => t.status === "fee_unallocated",
-  tagged: (t) => t.status === "tagged" || t.status === "auto_tagged",
+  tagged: (t) => t.status === "tagged" || t.status === "auto_tagged" || t.status === "matched",
   all: () => true,
 };
 
@@ -69,6 +69,7 @@ type Body =
 
 function checkMayTag(db: DB, t: BankTxn, me: SignedInMember, targets: string[]) {
   if (!canSeeTxn(t, me, db)) throw new HttpError(404, "Transaction not found");
+  if (t.paymentId) throw new HttpError(409, "This line is the bank side of a declared payment, so it's already on that fund. Unlink it under Transactions → Declared payments first.");
   for (const fid of [...targets, ...t.allocations.map((a) => a.fundId)]) {
     const f = db.funds.find((x) => x.id === fid && x.ngoId === me.ngoId);
     if (!f) throw new HttpError(400, "Unknown fund");

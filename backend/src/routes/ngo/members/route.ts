@@ -3,7 +3,7 @@ import { getDb, mutate, newId, nowIso } from "@/lib/db";
 import { publish } from "@/lib/events";
 import { handle, json, setCookie } from "@/lib/http";
 import { findMember, hashPassword, HttpError, ngoCookieValue, requireNgo, requireNgoAdmin, SESSION_COOKIE } from "@/lib/session";
-import type { DB, MemberRole, Ngo } from "@/lib/types";
+import { type DB, type MemberRole, type Ngo, roleLabel } from "@/lib/types";
 
 const USERNAME = /^[a-z0-9._-]{3,32}$/;
 const MIN_PASSWORD = 8;
@@ -31,13 +31,16 @@ export const GET = handle(async () => {
       username: me.role === "admin" ? m.username : undefined,
       createdAt: m.createdAt,
       fundIds: funds.filter((f) => f.assignees.includes(m.id)).map((f) => f.id),
+      // Donors: the funds an admin lets them see.
+      viewFundIds: m.role === "donor" ? funds.filter((f) => f.viewers?.includes(m.id)).map((f) => f.id) : undefined,
     })),
   });
 });
 
 type Body =
   | { action: "create"; name?: string; title?: string; username?: string; password?: string; role?: MemberRole }
-  | { action: "update"; id?: string; title?: string; role?: MemberRole; active?: boolean; password?: string };
+  | { action: "update"; id?: string; title?: string; role?: MemberRole; active?: boolean; password?: string }
+  | { action: "donor_funds"; id?: string; fundIds?: string[] };
 
 /** Admins create staff logins and manage existing ones. */
 export const POST = handle(async (req: Request) => {
@@ -47,7 +50,16 @@ export const POST = handle(async (req: Request) => {
     if (!p || p.length < MIN_PASSWORD) throw new HttpError(400, `Passwords need at least ${MIN_PASSWORD} characters`);
     return p;
   };
-  const role = (r?: MemberRole): MemberRole | undefined => (r === undefined ? undefined : r === "admin" || r === "user" ? r : (() => { throw new HttpError(400, "Role must be admin or user"); })());
+  const role = (r?: MemberRole): MemberRole | undefined => (r === undefined ? undefined : r === "admin" || r === "user" || r === "donor" ? r : (() => { throw new HttpError(400, "Role must be admin, user or donor"); })());
+  /** Donors are read-only, so they can't sit on a fund's approver list or have requests to join one. */
+  /** Funds a donor may see. Cleared when they stop being a donor or are deactivated. */
+  const dropViewer = (db: DB, memberId: string) => {
+    for (const f of db.funds) if (f.viewers?.includes(memberId)) f.viewers = f.viewers.filter((id) => id !== memberId);
+  };
+  const dropFundAccess = (db: DB, memberId: string) => {
+    for (const f of db.funds) f.assignees = f.assignees.filter((id) => id !== memberId);
+    for (const r of db.assignmentRequests) if (r.memberId === memberId && r.status === "pending") Object.assign(r, { status: "cancelled", decidedBy: me.id, decidedAt: nowIso() });
+  };
 
   const out = mutate((db) => {
     const ngo = ngoOf(db, me.ngoId);
@@ -60,7 +72,7 @@ export const POST = handle(async (req: Request) => {
       const m = {
         id: newId("mem"),
         name: name.slice(0, 80),
-        title: b.title?.trim().slice(0, 80) || "Staff",
+        title: b.title?.trim().slice(0, 80) || (b.role === "donor" ? "Donor" : "Staff"),
         username,
         passwordHash: hashPassword(checkPassword(b.password)),
         role: role(b.role) ?? "user",
@@ -69,7 +81,38 @@ export const POST = handle(async (req: Request) => {
         createdBy: me.id,
       };
       ngo.members.push(m);
-      audit(db, { actor: me, action: "member.created", targetId: m.id, summary: `Created ${m.role === "admin" ? "admin" : "staff"} login "${m.username}" for ${m.name}`, meta: { role: m.role, username: m.username } });
+      audit(db, { actor: me, action: "member.created", targetId: m.id, summary: `Created ${roleLabel(m.role)} login "${m.username}" for ${m.name}`, meta: { role: m.role, username: m.username } });
+      return { ok: true, id: m.id };
+    }
+
+    if (b.action === "donor_funds") {
+      const m = ngo.members.find((x) => x.id === b.id);
+      if (!m) throw new HttpError(404, "Unknown team member");
+      if (m.role !== "donor") throw new HttpError(400, "Only donor logins are given funds to view. Staff are assigned under Funds & access.");
+      const want = new Set(b.fundIds ?? []);
+      const funds = db.funds.filter((f) => f.ngoId === ngo.id);
+      for (const id of want) if (!funds.some((f) => f.id === id)) throw new HttpError(400, "Unknown fund");
+      const added: string[] = [];
+      const removed: string[] = [];
+      for (const f of funds) {
+        const has = Boolean(f.viewers?.includes(m.id));
+        if (want.has(f.id) && !has) {
+          f.viewers = [...(f.viewers ?? []), m.id];
+          added.push(f.title);
+        } else if (!want.has(f.id) && has) {
+          f.viewers = (f.viewers ?? []).filter((x) => x !== m.id);
+          removed.push(f.title);
+        }
+      }
+      if (added.length || removed.length) {
+        audit(db, {
+          actor: me,
+          action: "member.donor_funds_changed",
+          targetId: m.id,
+          summary: `${m.name} (donor) can ${[added.length ? `now see ${added.join(", ")}` : "", removed.length ? `no longer see ${removed.join(", ")}` : ""].filter(Boolean).join("; ")}`,
+          meta: { funds: [...want].join(",") },
+        });
+      }
       return { ok: true, id: m.id };
     }
 
@@ -83,7 +126,9 @@ export const POST = handle(async (req: Request) => {
       if (adminsLeft === 0) throw new HttpError(400, "The NGO needs at least one active admin");
 
       if (b.title !== undefined) m.title = b.title.trim().slice(0, 80) || m.title;
-      if (m.role !== nextRole) audit(db, { actor: me, action: "member.role_changed", targetId: m.id, summary: `Changed ${m.name} from ${m.role} to ${nextRole}`, meta: { from: m.role, to: nextRole } });
+      if (m.role !== nextRole) audit(db, { actor: me, action: "member.role_changed", targetId: m.id, summary: `Changed ${m.name} from ${roleLabel(m.role)} to ${roleLabel(nextRole)}`, meta: { from: m.role, to: nextRole } });
+      if (m.role !== nextRole && nextRole === "donor") dropFundAccess(db, m.id);
+      if (m.role === "donor" && nextRole !== "donor") dropViewer(db, m.id);
       m.role = nextRole;
       if (b.password !== undefined) {
         m.passwordHash = hashPassword(checkPassword(b.password));
@@ -92,8 +137,8 @@ export const POST = handle(async (req: Request) => {
       }
       if (m.active && !nextActive) {
         // A deactivated person comes off every fund and their open requests close.
-        for (const f of db.funds) f.assignees = f.assignees.filter((id) => id !== m.id);
-        for (const r of db.assignmentRequests) if (r.memberId === m.id && r.status === "pending") Object.assign(r, { status: "cancelled", decidedBy: me.id, decidedAt: nowIso() });
+        dropFundAccess(db, m.id);
+        dropViewer(db, m.id);
       }
       if (m.active !== nextActive) audit(db, { actor: me, action: nextActive ? "member.reactivated" : "member.deactivated", targetId: m.id, summary: nextActive ? `Reactivated ${m.name}` : `Deactivated ${m.name} and removed them from all funds` });
       m.active = nextActive;

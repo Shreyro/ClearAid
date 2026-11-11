@@ -1,5 +1,5 @@
 import { ingestRows, postAllocations, type ParsedRow } from "./banking";
-import type { BankAccount, DB } from "./types";
+import type { BankAccount, DB, PayPalAccount } from "./types";
 
 /**
  * Demo bank account with one CSV statement already imported: most lines carry
@@ -55,4 +55,69 @@ export function seedBank(db: DB, now: number) {
   fuel.taggedAt = new Date(now - 3 * DAY).toISOString();
   fuel.reason = "Diesel for the Paradip distribution trucks (Cyclone Asha), receipt in the logistics folder";
   postAllocations(db, account, fuel, fuel.allocations, `tagged by Daniel Okafor: ${fuel.reason}`, fuel.taggedAt);
+}
+
+/**
+ * A second bank account (the field office's), so the demo shows an NGO with
+ * more than one account: cash collected at relief camps and paid in, and local
+ * purchases paid from it. Returns false if it is already there.
+ */
+export function seedFieldAccount(db: DB, now: number) {
+  if (db.bankAccounts.some((a) => a.id === "bank_field") || !db.ngos.some((n) => n.id === "ngo_crc")) return false;
+  const DAY = 86400_000;
+  const day = (n: number) => new Date(now - n * DAY).toISOString().slice(0, 10);
+  const account: BankAccount = {
+    id: "bank_field",
+    ngoId: "ngo_crc",
+    name: "Field office account ••7730",
+    provider: "csv",
+    institution: "Kendrapara District Co-operative Bank",
+    mask: "7730",
+    currency: "USD",
+    status: "active",
+    createdAt: new Date(now - 20 * DAY).toISOString(),
+    createdBy: "adm_priya",
+    feePatterns: ["SERVICE CHARGE", "SMS CHARGES", "CASH HANDLING"],
+    csvMapping: { date: "Date", description: "Narration", debit: "Withdrawal", credit: "Deposit", reference: "Ref No", dateFormat: "dmy" },
+  };
+  db.bankAccounts.push(account);
+  const rows: ParsedRow[] = [
+    { date: day(9), amount: 38_000, description: "CASH DEP relief camp collection box Kendrapara #MONSOON", reference: "CSH0007711" },
+    { date: day(8), amount: -21_500, description: "NEFT DR Maa Tarini General Store drinking water #MONSOON-WAT", reference: "UTR0007740" },
+    { date: day(6), amount: 60_000, description: "NEFT CR Kendrapara Rotary Club #ASHA", reference: "UTR0007768" },
+    { date: day(5), amount: -350, description: "SMS CHARGES quarterly", reference: "CHG0007790" },
+    { date: day(4), amount: -18_000, description: "UPI DR local boat hire Pattamundai", reference: "UPI0007802" },
+    { date: day(3), amount: -42_000, description: "NEFT DR Odisha Agro Traders rice #ASHA-FOOD", reference: "UTR0007815" },
+  ];
+  ingestRows(db, account, rows, { source: "csv", fileName: "field-office-nov.csv", fileSha256: "seeded-field-office-nov", actor: { id: "adm_priya", name: "Priya Raman" }, at: new Date(now - 2 * DAY).toISOString() });
+  return true;
+}
+
+/**
+ * A second PayPal account for the demo NGO: the Monsoon appeal collects into
+ * its own "Appeals" account, so gifts to it are kept apart from the main one.
+ * Simulated, so no keys are needed. Returns false if it is already there.
+ */
+export function seedPayPalAccounts(db: DB, now: number) {
+  if (db.paypalAccounts?.some((a) => a.id === "pp_appeals") || !db.ngos.some((n) => n.id === "ngo_crc")) return false;
+  const acc: PayPalAccount = {
+    id: "pp_appeals",
+    ngoId: "ngo_crc",
+    name: "Appeals account (simulated)",
+    email: "appeals@coastal-relief.example",
+    env: "sandbox",
+    mode: "simulated",
+    status: "active",
+    createdAt: new Date(now - 60 * 86400_000).toISOString(),
+    createdBy: "adm_priya",
+  };
+  (db.paypalAccounts ??= []).push(acc);
+  const monsoon = db.funds.find((f) => f.id === "fund_monsoon");
+  if (monsoon) {
+    monsoon.paypalAccountId = acc.id;
+    // The appeal has always collected here: its PayPal gifts landed in this account.
+    const caps = new Set(db.donations.filter((d) => d.fundId === monsoon.id && d.source === "paypal").flatMap((d) => d.captureIds));
+    for (const c of db.captures) if (caps.has(c.id) && !c.id.startsWith("MANUAL-")) c.accountId = acc.id;
+  }
+  return true;
 }

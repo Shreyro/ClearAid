@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CodeXml, Copy, ExternalLink, EyeOff, Loader2, Pause, Pencil, Play, Plus, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, CodeXml, Copy, ExternalLink, EyeOff, Loader2, Pause, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 import { api, useJson } from "./hooks";
 import { EmbedView, type EmbedData } from "./EmbedView";
+import { themeClass, type EmbedTheme } from "./embedTheme";
 import { Pill } from "./ui";
 
 /** EmbedPublish in backend/src/lib/types.ts. */
@@ -17,12 +18,15 @@ type Publish = {
   timeline: boolean;
   activity: 0 | 5 | 10 | 25;
   integrity: boolean;
+  funds: boolean;
 };
 type Embed = {
   id: string;
   key: string;
   name: string;
-  fundId: string;
+  allFunds: boolean;
+  fundIds: string[];
+  theme: EmbedTheme;
   fundTitle: string;
   publish: Publish;
   blocks: string[];
@@ -32,10 +36,17 @@ type Embed = {
 };
 type Fund = { id: string; title: string; status: string };
 type Resp = { embeds: Embed[]; funds: Fund[] };
-type Draft = { id?: string; fundId: string; name: string; publish: Publish };
+/** Which funds an embed publishes: all of them (and any added later), or the ones ticked. */
+type Draft = { id?: string; allFunds: boolean; fundIds: string[]; theme: EmbedTheme; name: string; publish: Publish };
+
+const THEMES: { id: EmbedTheme; label: string; hint: string }[] = [
+  { id: "light", label: "Light", hint: "Light card, for pages with a light background." },
+  { id: "dark", label: "Dark", hint: "Dark card, for pages with a dark background." },
+  { id: "auto", label: "Match device", hint: "Light or dark, following each visitor's device setting." },
+];
 
 /** What a new embed starts with: the headline numbers and nothing that names anyone. */
-const START: Publish = { totals: true, sources: true, categories: true, payees: "off", flow: false, timeline: false, activity: 0, integrity: true };
+const START: Publish = { totals: true, sources: true, categories: true, payees: "off", flow: false, timeline: false, activity: 0, integrity: true, funds: true };
 
 type Switch = "totals" | "sources" | "categories" | "flow" | "timeline" | "integrity";
 const SWITCHES: Record<Switch, { label: string; hint: string }> = {
@@ -50,11 +61,13 @@ const SWITCHES: Record<Switch, { label: string; hint: string }> = {
 const NEVER = "Never published, whatever you choose: who gave, bank references, account names, tracking codes, staff names, approvals, receipts and the audit log.";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+/** The iframe title: the fund, or a general name when several are combined. */
+const frameTitle = (e: Embed) => (e.allFunds ? "All our relief funds" : e.fundIds.length > 1 ? "Our relief funds" : e.fundTitle);
 const attr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** The HTML an NGO pastes into its own website. */
 function embedCode(origin: string, e: Embed, height: number, fit: boolean) {
-  const frame = `<iframe${fit ? " data-clearaid-embed" : ""} src="${origin}/embed/${e.key}" title="${attr(e.fundTitle)}: where the money goes" loading="lazy" style="width:100%;max-width:760px;height:${height}px;border:0"></iframe>`;
+  const frame = `<iframe${fit ? " data-clearaid-embed" : ""} src="${origin}/embed/${e.key}" title="${attr(frameTitle(e))}: where the money goes" loading="lazy" style="width:100%;max-width:760px;height:${height}px;border:0"></iframe>`;
   return fit ? `${frame}\n<script async src="${origin}/embed.js"></script>` : frame;
 }
 
@@ -67,7 +80,7 @@ export function Embeds() {
   // The fund page links here with ?fund=<id> to start an embed for that fund.
   const [draft, setDraft] = useState<Draft | null>(() => {
     const fundId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("fund");
-    return fundId ? { fundId, name: "", publish: START } : null;
+    return fundId ? { allFunds: false, fundIds: [fundId], theme: "light", name: "", publish: START } : null;
   });
   const [codeFor, setCodeFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -101,13 +114,13 @@ export function Embeds() {
           </p>
         </div>
         {!draft && (
-          <button className="btn btn-primary" onClick={() => setDraft({ fundId: data.funds[0]?.id ?? "", name: "", publish: START })} disabled={!data.funds.length}>
+          <button className="btn btn-primary" onClick={() => setDraft({ allFunds: false, fundIds: data.funds[0] ? [data.funds[0].id] : [], theme: "light", name: "", publish: START })} disabled={!data.funds.length}>
             <Plus className="h-4 w-4" /> New embed
           </button>
         )}
       </div>
 
-      {msg && <div className={clsx("card p-3 text-sm", msg.ok ? "bg-brand-wash border-[#bfe3dc]" : "bg-[#fdf2f2] border-[#f1c4c4] text-[#9b2424]")} role={msg.ok ? "status" : "alert"}>{msg.text}</div>}
+      {msg && <div className={clsx("card p-3 text-sm", msg.ok ? "bg-brand-wash border-brand-line" : "bg-bad-soft border-bad-line text-bad-ink")} role={msg.ok ? "status" : "alert"}>{msg.text}</div>}
 
       {draft && (
         <Editor
@@ -138,8 +151,9 @@ export function Embeds() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{e.name}</span>
                     <Pill tone={e.enabled ? "good" : "neutral"}>{e.enabled ? "Live" : "Paused"}</Pill>
+                    {e.theme !== "light" && <Pill>{e.theme === "dark" ? "Dark" : "Matches device"}</Pill>}
                   </div>
-                  <div className="text-sm text-ink-2 mt-0.5">{e.fundTitle}</div>
+                  <div className="text-sm text-ink-2 mt-0.5">{e.allFunds ? "All funds, including ones added later" : e.fundIds.length > 1 ? `${e.fundIds.length} funds together: ${e.fundTitle}` : e.fundTitle}</div>
                   <div className="text-xs text-ink-2 mt-2"><span className="text-muted">Shows:</span> {e.blocks.join(" · ")}</div>
                   <div className="text-xs text-muted mt-1">Last changed by {e.updatedByName} on {shortDate(e.updatedAt)}</div>
                 </div>
@@ -147,7 +161,7 @@ export function Embeds() {
                   <button className="btn btn-ghost !py-1 text-xs" onClick={() => setCodeFor(codeFor === e.id ? null : e.id)} aria-expanded={codeFor === e.id}>
                     <CodeXml className="h-3.5 w-3.5" /> {codeFor === e.id ? "Hide code" : "Get code"}
                   </button>
-                  <button className="btn btn-ghost !py-1 text-xs" onClick={() => setDraft({ id: e.id, fundId: e.fundId, name: e.name, publish: e.publish })}>
+                  <button className="btn btn-ghost !py-1 text-xs" onClick={() => setDraft({ id: e.id, allFunds: e.allFunds, fundIds: e.fundIds, theme: e.theme, name: e.name, publish: e.publish })}>
                     <Pencil className="h-3.5 w-3.5" /> Edit
                   </button>
                   <button className="btn btn-ghost !py-1 text-xs" disabled={busy === e.id} onClick={() => act(e.enabled ? "pause" : "resume", e)}>
@@ -167,25 +181,105 @@ export function Embeds() {
   );
 }
 
+/**
+ * Which funds to publish: a dropdown with a scrolling list of tick boxes.
+ * "All funds" covers every fund, including ones created later.
+ */
+function FundPicker({ funds, allFunds, picked, onAll, onToggle }: { funds: Fund[]; allFunds: boolean; picked: string[]; onAll: (v: boolean) => void; onToggle: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  // Close on a click outside or Escape.
+  useEffect(() => {
+    if (!open) return;
+    const click = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", click);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", click);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const titles = funds.filter((f) => picked.includes(f.id)).map((f) => f.title);
+  const summary = allFunds ? "All funds" : titles.length === 0 ? "Choose funds…" : titles.length === 1 ? titles[0] : `${titles.length} funds: ${titles.join(", ")}`;
+
+  return (
+    <div ref={box} className="relative">
+      <span className="label" id="emb-funds-label">Funds to publish</span>
+      <button
+        type="button"
+        className="input flex items-center justify-between gap-2 text-left"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-labelledby="emb-funds-label"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={clsx("truncate", !allFunds && !titles.length && "text-muted")}>{summary}</span>
+        <ChevronDown className={clsx("h-4 w-4 shrink-0 text-muted transition-transform", open && "rotate-180")} aria-hidden />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full card shadow-lg p-1" role="listbox" aria-multiselectable="true" aria-labelledby="emb-funds-label">
+          <label className="flex items-start gap-2.5 rounded-md px-2.5 py-2 cursor-pointer hover:bg-hover-soft">
+            <input type="checkbox" className="mt-1" checked={allFunds} onChange={(e) => onAll(e.target.checked)} />
+            <span>
+              <span className="text-sm font-medium">All funds</span>
+              <span className="block text-xs text-ink-2">Every fund added together, including funds you create later.</span>
+            </span>
+          </label>
+          <div className="border-t border-line my-1" />
+          <div className="max-h-52 overflow-y-auto overscroll-contain">
+            {funds.map((f) => (
+              <label key={f.id} className={clsx("flex items-center gap-2.5 rounded-md px-2.5 py-2", allFunds ? "opacity-60" : "cursor-pointer hover:bg-hover-soft")}>
+                <input type="checkbox" checked={allFunds || picked.includes(f.id)} disabled={allFunds} onChange={() => onToggle(f.id)} />
+                <span className="text-sm">
+                  {f.title}
+                  {f.status !== "active" ? <span className="text-muted"> ({f.status})</span> : null}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="border-t border-line mt-1 pt-1 flex justify-end">
+            <button type="button" className="btn btn-ghost !py-1 text-xs" onClick={() => setOpen(false)}>Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Create or change an embed, with a live preview of exactly what it would publish. */
 function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund[]; onCancel: () => void; onSaved: (e: Embed, message: string) => Promise<void> }) {
-  const [fundId, setFundId] = useState(funds.some((f) => f.id === draft.fundId) ? draft.fundId : (funds[0]?.id ?? ""));
+  const [allFunds, setAllFunds] = useState(draft.allFunds);
+  const [theme, setTheme] = useState<EmbedTheme>(draft.theme);
+  const [picked, setPicked] = useState<string[]>(draft.fundIds.filter((id) => funds.some((f) => f.id === id)));
+  const combined = allFunds || picked.length > 1;
+  const noneTicked = !allFunds && picked.length === 0;
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const [name, setName] = useState(draft.name);
   const [publish, setPublish] = useState<Publish>(draft.publish);
   const [preview, setPreview] = useState<EmbedData | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = <K extends keyof Publish>(k: K, v: Publish[K]) => setPublish((p) => ({ ...p, [k]: v }));
-  const nothing = !publish.totals && !publish.sources && !publish.categories && publish.payees === "off" && !publish.flow && !publish.timeline && !publish.activity && !publish.integrity;
+  const nothing = !publish.totals && !publish.sources && !publish.categories && publish.payees === "off" && !publish.flow && !publish.timeline && !publish.activity && !publish.integrity && !(combined && publish.funds);
 
   // The preview comes from the server, built by the same code as the public response.
-  const settings = JSON.stringify(publish);
+  const settings = JSON.stringify({ publish, allFunds, fundIds: picked });
   useEffect(() => {
-    if (!fundId) return;
     let cancelled = false;
     const t = setTimeout(() => {
-      api<EmbedData>("/api/embeds/preview", { json: { fundId, publish: JSON.parse(settings) } }).then(
-        (d) => !cancelled && setPreview(d),
+      const body = JSON.parse(settings) as { publish: Publish; allFunds: boolean; fundIds: string[] };
+      if (!body.allFunds && !body.fundIds.length) return;
+      api<EmbedData>("/api/embeds/preview", { json: body }).then(
+        (d) => {
+          if (cancelled) return;
+          setPreview(d);
+          setErr(null);
+        },
         (e: Error) => !cancelled && setErr(e.message),
       );
     }, 150);
@@ -193,14 +287,15 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
       cancelled = true;
       clearTimeout(t);
     };
-  }, [fundId, settings]);
+  }, [settings]);
 
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
     setBusy(true);
     setErr(null);
     try {
-      const r = await api<{ embed: Embed; message: string }>("/api/embeds", { json: draft.id ? { action: "update", id: draft.id, name, publish } : { action: "create", fundId, name, publish } });
+      const sel = { ...(allFunds ? { allFunds: true } : { fundIds: picked }), theme };
+      const r = await api<{ embed: Embed; message: string }>("/api/embeds", { json: draft.id ? { action: "update", id: draft.id, name, publish, ...sel } : { action: "create", name, publish, ...sel } });
       await onSaved(r.embed, r.message);
     } catch (x) {
       setErr((x as Error).message);
@@ -222,15 +317,24 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
     <form onSubmit={save} className="card p-5">
       <div className="flex items-start justify-between gap-3 mb-4">
         <h3 className="font-semibold">{draft.id ? "Change what this embed shows" : "New embed"}</h3>
-        <button type="button" className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-[#efeee9]" onClick={onCancel} aria-label="Close"><X className="h-4 w-4" /></button>
+        <button type="button" className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-hover" onClick={onCancel} aria-label="Close"><X className="h-4 w-4" /></button>
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)]">
         <div className="space-y-4">
+          <FundPicker funds={funds} allFunds={allFunds} picked={picked} onAll={setAllFunds} onToggle={toggle} />
+          <span className="block text-xs text-ink-2 -mt-3">
+            {noneTicked ? "Tick at least one fund." : combined ? "The ticked funds are added together in one embed." : "One fund: the embed shows that fund on its own."}
+          </span>
           <div>
-            <label className="label" htmlFor="emb-fund">Fund</label>
-            <select id="emb-fund" className="input" value={fundId} onChange={(e) => setFundId(e.target.value)} disabled={Boolean(draft.id)} required>
-              {funds.map((f) => <option key={f.id} value={f.id}>{f.title}{f.status !== "active" ? ` (${f.status})` : ""}</option>)}
-            </select>
+            <span className="label" id="emb-theme-label">Colours</span>
+            <div className="flex rounded-lg border border-line p-1 text-xs font-semibold" role="radiogroup" aria-labelledby="emb-theme-label">
+              {THEMES.map((t) => (
+                <button key={t.id} type="button" role="radio" aria-checked={theme === t.id} className={clsx("flex-1 rounded-md py-1.5", theme === t.id ? "bg-brand text-white" : "text-ink-2")} onClick={() => setTheme(t.id)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <span className="block text-xs text-ink-2 mt-1">{THEMES.find((t) => t.id === theme)!.hint}</span>
           </div>
           <div>
             <label className="label" htmlFor="emb-name">Name, for your own reference</label>
@@ -268,12 +372,21 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
               <span className="block text-xs text-ink-2 mt-1">Each with its date, type, budget category and amount. The payee is added only if payees are named above.</span>
             </div>
             {check("integrity")}
+            {combined && (
+              <label className="flex items-start gap-2.5">
+                <input type="checkbox" className="mt-1" checked={publish.funds} onChange={(e) => set("funds", e.target.checked)} />
+                <span>
+                  <span className="text-sm font-medium">Each fund&apos;s totals</span>
+                  <span className="block text-xs text-ink-2">A line per fund with its money in, money out and what it still holds.</span>
+                </span>
+              </label>
+            )}
           </fieldset>
 
           <p className="text-xs text-muted flex items-start gap-1.5"><EyeOff className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden /> {NEVER}</p>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn btn-primary" disabled={busy || nothing || !fundId}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} {draft.id ? "Save changes" : "Publish"}</button>
+            <button className="btn btn-primary" disabled={busy || nothing || noneTicked}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} {draft.id ? "Save changes" : "Publish"}</button>
             <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
           </div>
           {nothing && <p className="text-sm text-ink-2">Choose at least one thing to publish.</p>}
@@ -282,9 +395,11 @@ function Editor({ draft, funds, onCancel, onSaved }: { draft: Draft; funds: Fund
 
         <div className="min-w-0">
           <div className="label">Preview: exactly what the public will see</div>
-          <div className="rounded-xl border border-dashed border-line-strong bg-[#fafaf7] p-3">
-            {preview ? <EmbedView data={preview} /> : <div className="card h-64 animate-pulse" />}
+          {/* Shown on a background like the website's, in the chosen colours. */}
+          <div className={clsx("rounded-xl border border-dashed border-line-strong p-3 bg-[var(--page)]", themeClass(theme))}>
+            {noneTicked ? <div className="card p-6 text-sm text-muted">Tick a fund to see the preview.</div> : preview ? <EmbedView data={preview} /> : <div className="card h-64 animate-pulse" />}
           </div>
+          {theme === "auto" && <p className="text-xs text-muted mt-1">The preview follows your own device&apos;s setting.</p>}
           <p className="text-xs text-muted mt-2">{draft.id ? "Nothing changes on your website until you save." : "Nothing is public until you publish."} The numbers are live from the ledger.</p>
         </div>
       </div>
@@ -348,9 +463,9 @@ function CodePanel({ embed }: { embed: Embed }) {
       </div>
       <div className="min-w-0">
         <div className="label">On your website it looks like this</div>
-        <div className="rounded-xl border border-dashed border-line-strong bg-[#fafaf7] p-3">
+        <div className={clsx("rounded-xl border border-dashed border-line-strong p-3 bg-[var(--page)]", themeClass(embed.theme))}>
           {/* Same width limit as the pasted code. Reloads when the settings change. */}
-          <iframe ref={frame} key={embed.updatedAt} src={`/embed/${embed.key}`} title={`${embed.fundTitle}: where the money goes`} style={{ width: "100%", maxWidth: 760, height, border: 0, display: "block" }} />
+          <iframe ref={frame} key={embed.updatedAt} src={`/embed/${embed.key}`} title={`${frameTitle(embed)}: where the money goes`} style={{ width: "100%", maxWidth: 760, height, border: 0, display: "block" }} />
         </div>
       </div>
     </div>

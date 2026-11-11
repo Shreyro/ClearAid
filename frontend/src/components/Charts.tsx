@@ -50,7 +50,7 @@ export function MoneyFlowChart({ entries, startedAt }: { entries: Entry[]; start
         if (e.type === "withdrawal") spent += -e.amount;
         // Bank lines are signed; a retag posts a reversing entry, so add them as-is.
         if (e.type === "bank_in") raised += e.amount;
-        if (e.type === "bank_out") spent += -e.amount;
+        if (e.type === "bank_out" || e.type === "expense") spent += -e.amount;
         if (e.type === "refund" || e.type === "carry_forward_out") raised += e.amount; // money returned leaves the pot
       }
       out.push({ t: Math.min(start + (d + 1) * 86400_000, end), raised, spent });
@@ -96,7 +96,7 @@ export function CumulativeChart({ points }: { points: FlowPoint[] }) {
       <svg width={width} height={height} role="img" aria-label={`Cumulative money in ${usd(last?.raised ?? 0)} and money out ${usd(last?.spent ?? 0)}`}>
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={pad.l} x2={pad.l + iw} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--line-strong)" : "#ecebe5"} />
+            <line x1={pad.l} x2={pad.l + iw} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--line-strong)" : "var(--grid, #ecebe5)"} />
             <text x={pad.l - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="var(--muted)" className="tnum">{tick(t)}</text>
           </g>
         ))}
@@ -164,7 +164,7 @@ export function CategoryBars({ rows }: { rows: { label: string; value: number; c
           </li>
         );
       })}
-      {rows.some((r) => r.capPct) && <li className="text-[11px] text-muted pt-1 flex items-center gap-1.5"><span className="inline-block w-px h-3 bg-ink-2" /> Spending cap set by the fund&apos;s policy</li>}
+      {rows.some((r) => r.capPct) && <li className="text-xs text-muted pt-1 flex items-center gap-1.5"><span className="inline-block w-px h-3 bg-ink-2" /> Spending cap set by the fund&apos;s policy</li>}
     </ul>
   );
 }

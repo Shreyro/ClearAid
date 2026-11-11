@@ -6,10 +6,15 @@ import clsx from "clsx";
 import { usd } from "./hooks";
 import { CumulativeChart } from "./Charts";
 import { Sankey, type FlowGraph } from "./Sankey";
+import type { EmbedTheme } from "./embedTheme";
 import { Pill, Stat } from "./ui";
 
 /** The public response for one embed (EmbedPayload in backend/src/lib/embed.ts). Blocks that aren't published are absent. */
 export type EmbedData = {
+  /** "combined" when two or more funds are published together. */
+  scope?: "combined";
+  /** Colours chosen by the admin; the page wraps the widget in the matching theme class. */
+  theme?: EmbedTheme;
   fund: { title: string; region: string; status: string; accent: string };
   ngo: { name: string };
   asOf: string;
@@ -19,8 +24,9 @@ export type EmbedData = {
   payees?: { name: string; amount: number; payments: number; other?: boolean }[];
   flow?: FlowGraph;
   timeline?: { date: string; in: number; out: number }[];
-  activity?: { date: string; direction: "in" | "out"; label: string; detail?: string; payee?: string; amount: number }[];
-  integrity?: { valid: boolean; entries: number; head: string | null };
+  activity?: { date: string; direction: "in" | "out"; label: string; detail?: string; payee?: string; amount: number; fund?: string }[];
+  integrity?: { valid: boolean; entries: number; head: string | null; ledgers?: number };
+  funds?: { title: string; status: string; accent: string; in: number; out: number; held: number }[];
 };
 
 // Day-only dates are published in UTC; show them as that day wherever the reader is.
@@ -57,16 +63,17 @@ function BarList({ rows, color, of, empty }: { rows: Bar[]; color: string; of: s
   );
 }
 
-/** One side of the flow diagram as bar rows: what came into the fund, or where it went (spending first, then money returned or still held). */
+/** One side of the flow diagram as bar rows: what came in, or where it went (spending first, then money returned or still held). Adds up across funds. */
 function flowRows(flow: FlowGraph, side: "in" | "out"): Bar[] {
   const label = new Map(flow.nodes.map((n) => [n.id, n.label]));
   const spend = (id: string) => id.startsWith("dst:cat:") || id === "dst:fees";
-  return flow.links
-    .filter((l) => (side === "in" ? l.target === "fund" : l.source === "fund"))
-    .map((l) => {
-      const id = side === "in" ? l.source : l.target;
-      return { key: id, label: label.get(id) ?? "Other", amount: l.value, muted: side === "in" ? id === "src:deficit" : !spend(id) };
-    })
+  const totals = new Map<string, number>();
+  for (const l of flow.links) {
+    const id = side === "in" ? l.source : l.target;
+    if (id.startsWith(side === "in" ? "src:" : "dst:")) totals.set(id, (totals.get(id) ?? 0) + l.value);
+  }
+  return [...totals]
+    .map(([id, amount]) => ({ key: id, label: label.get(id) ?? "Other", amount, muted: side === "in" ? id === "src:deficit" : !spend(id) }))
     .sort((a, b) => Number(a.muted) - Number(b.muted) || b.amount - a.amount);
 }
 
@@ -86,7 +93,8 @@ function Block({ title, children, className }: { title: string; children: React.
  * the box it is in (container queries), not the browser window.
  */
 export function EmbedView({ data }: { data: EmbedData }) {
-  const { fund, ngo, totals, sources, categories, payees, flow, timeline, activity, integrity } = data;
+  const { fund, ngo, totals, sources, categories, payees, flow, timeline, activity, integrity, funds } = data;
+  const combined = data.scope === "combined";
   const asOf = new Date(data.asOf).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   const overspent = totals ? totals.held < 0 : false;
 
@@ -112,11 +120,30 @@ export function EmbedView({ data }: { data: EmbedData }) {
           </div>
         )}
 
+        {funds && (
+          <Block title="Fund by fund">
+            <ul className="divide-y divide-line">
+              {funds.map((f) => (
+                <li key={f.title} className="py-2.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+                  <span className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: f.accent }} aria-hidden />
+                    <span className="truncate font-medium" title={f.title}>{f.title}</span>
+                    {f.status !== "active" && <Pill>{f.status === "closed" ? "Closed" : "Closing"}</Pill>}
+                  </span>
+                  <span className="text-xs text-ink-2 tnum">
+                    In <b className="text-ink">{usd(f.in, true)}</b> · Out <b className="text-ink">{usd(f.out, true)}</b> · {f.held < 0 ? "Overspent" : "Held"} <b className="text-ink">{usd(Math.abs(f.held), true)}</b>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Block>
+        )}
+
         {flow && (
           <>
             {/* The diagram needs room; in a narrow column (a phone) the same totals are listed instead. */}
             <Block title="From where to where" className="hidden @min-[38rem]:block">
-              <Sankey graph={{ ...flow, nodes: flow.nodes.map((n) => (n.kind === "fund" ? { ...n, label: "This fund" } : n)) }} compact ariaLabel={`${fund.title}: where the money came from and where it went`} />
+              <Sankey graph={combined ? flow : { ...flow, nodes: flow.nodes.map((n) => (n.kind === "fund" ? { ...n, label: "This fund" } : n)) }} compact ariaLabel={`${fund.title}: where the money came from and where it went`} />
             </Block>
             {(!sources || !categories) && (
               <div className="grid gap-6 @min-[38rem]:hidden">
@@ -181,7 +208,7 @@ export function EmbedView({ data }: { data: EmbedData }) {
                         {m.label}
                         {m.payee && <span className="text-ink-2"> · {m.payee}</span>}
                       </div>
-                      <div className="text-xs text-muted">{day(m.date)}{m.detail ? ` · ${m.detail}` : ""}</div>
+                      <div className="text-xs text-muted">{day(m.date)}{m.fund ? ` · ${m.fund}` : ""}{m.detail ? ` · ${m.detail}` : ""}</div>
                     </div>
                     <span className="tnum font-semibold shrink-0">{m.direction === "in" ? "+" : "−"}{usd(m.amount)}</span>
                   </li>
@@ -198,11 +225,11 @@ export function EmbedView({ data }: { data: EmbedData }) {
               <span>
                 {integrity.valid ? (
                   <>
-                    <span className="font-semibold text-ink">Ledger verified.</span> {integrity.entries.toLocaleString("en-US")} entries, each chained to the one before it by its hash, so past entries can&apos;t be changed unnoticed.
+                    <span className="font-semibold text-ink">{integrity.ledgers ? `All ${integrity.ledgers} ledgers verified.` : "Ledger verified."}</span> {integrity.entries.toLocaleString("en-US")} entries, each chained to the one before it by its hash, so past entries can&apos;t be changed unnoticed.
                     {integrity.head && <> Latest hash <span className="font-mono text-ink" title={integrity.head}>{integrity.head.slice(0, 12)}…</span></>}
                   </>
                 ) : (
-                  <><span className="font-semibold text-ink">Ledger check failed.</span> The hash chain of this fund&apos;s {integrity.entries.toLocaleString("en-US")} entries doesn&apos;t verify.</>
+                  <><span className="font-semibold text-ink">Ledger check failed.</span> {integrity.ledgers ? "At least one fund's hash chain doesn't verify." : <>The hash chain of this fund&apos;s {integrity.entries.toLocaleString("en-US")} entries doesn&apos;t verify.</>}</>
                 )}
               </span>
             </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { EmbedView, type EmbedData } from "@/components/EmbedView";
+import { themeClass } from "@/components/embedTheme";
 
 type State = { data?: EmbedData; gone?: boolean; failed?: boolean };
 
@@ -51,7 +52,7 @@ export function EmbedFrame({ embedKey }: { embedKey: string }) {
   }, []);
 
   return (
-    <main ref={root} className="embed-root p-px">
+    <main ref={root} className={`embed-root p-px ${themeClass(state.data?.theme)}`}>
       {state.data ? (
         <EmbedView data={state.data} />
       ) : state.gone || state.failed ? (

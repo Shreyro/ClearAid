@@ -87,7 +87,7 @@ export function SpendCard({ w, flash }: { w: WView; flash?: boolean }) {
             <img key={p.id} src={p.url} alt={`Delivery proof from ${w.vendor?.name}`} className="h-14 w-20 object-cover rounded-md border border-line" loading="lazy" />
           ))}
           {w.hiddenFiles > 0 && (
-            <span className="h-14 w-20 rounded-md border border-dashed border-line-strong text-[10px] text-muted grid place-items-center text-center px-1">
+            <span className="h-14 w-20 rounded-md border border-dashed border-line-strong text-xs text-muted grid place-items-center text-center px-1">
               <EyeOff className="h-3.5 w-3.5 mx-auto" />
               {w.hiddenFiles} private
             </span>

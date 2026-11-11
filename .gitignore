@@ -8,3 +8,13 @@ node_modules/
 *.pem
 *.log
 .vercel
+
+# Local FAISS index built by rag/server.py
+rag/.index/
+__pycache__/
+
+# Demo-site build tooling: a local Chrome profile and check screenshots
+demo-site/.taste-skill/
+demo-site/shots/
+# Local backups
+.tmp-demo-old/

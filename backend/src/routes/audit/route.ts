@@ -2,13 +2,13 @@ import { audit, verifyAuditChain } from "@/lib/audit";
 import { getDb, mutate, nowIso } from "@/lib/db";
 import { handle, json } from "@/lib/http";
 import { actorOf, isAssigned, requireNgo } from "@/lib/session";
-import type { AuditEntry, DB } from "@/lib/types";
+import type { AuditEntry, DB, MemberRole } from "@/lib/types";
 
 /**
  * Admins see the whole audit trail. Staff see entries for the funds they're
  * assigned to, plus their own actions (sign-ins, requests).
  */
-function canSee(db: DB, me: { id: string; role: "admin" | "user" }, e: AuditEntry) {
+function canSee(db: DB, me: { id: string; role: MemberRole }, e: AuditEntry) {
   if (me.role === "admin") return true;
   if (e.actorId === me.id) return true;
   if (!e.fundId) return false;

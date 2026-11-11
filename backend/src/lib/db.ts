@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { config } from "./config";
-import { buildSeed } from "./seed";
+import { hashPassword } from "./password";
+import { buildSeed, DEMO_LOGINS } from "./seed";
+import { seedFieldAccount, seedPayPalAccounts } from "./seed-bank";
 import type { DB } from "./types";
 
 /**
@@ -26,11 +28,42 @@ function persist(db: DB) {
   fs.renameSync(tmp, dbFile());
 }
 
+/**
+ * Data saved before donor logins existed has no demo donor. Add it to the demo
+ * NGO so it appears on the sign-in page without resetting everyone's changes.
+ * Skipped if the username is already taken.
+ */
+function addDemoDonor(db: DB) {
+  const login = DEMO_LOGINS.find((l) => l.memberId === "dnr_maya");
+  const ngo = db.ngos.find((n) => n.id === "ngo_crc");
+  if (!login || !ngo || db.ngos.some((n) => n.members.some((m) => m.id === login.memberId || m.username === login.username))) return false;
+  ngo.members.push({ id: login.memberId, name: "Maya Chen", title: "Donor", username: login.username, passwordHash: hashPassword(login.password), role: "donor", active: true, createdAt: new Date().toISOString() });
+  return true;
+}
+
+/**
+ * Donors used to see every fund; now an admin assigns them. Data saved before
+ * that has no fund with viewers at all, so give the demo donor the Asha fund
+ * (like a fresh seed) rather than leaving her with nothing to look at.
+ */
+function seedDonorFunds(db: DB) {
+  if (db.funds.some((f) => f.viewers)) return false;
+  const maya = db.ngos.flatMap((n) => n.members).find((m) => m.id === "dnr_maya");
+  const asha = db.funds.find((f) => f.id === "fund_asha");
+  for (const f of db.funds) f.viewers = [];
+  if (maya && asha) asha.viewers = [maya.id];
+  return true;
+}
+
 function load(): DB {
   if (holder.db) return holder.db;
   try {
     const parsed = JSON.parse(fs.readFileSync(dbFile(), "utf8")) as DB;
     if (parsed.version === DB_VERSION) {
+      const added = addDemoDonor(parsed);
+      // Data saved before an NGO could have several accounts: add the demo's second bank and PayPal accounts.
+      const accounts = [seedFieldAccount(parsed, Date.now()), seedPayPalAccounts(parsed, Date.now())].some(Boolean);
+      if (seedDonorFunds(parsed) || added || accounts) persist(parsed);
       holder.db = parsed;
       return parsed;
     }
@@ -47,10 +80,27 @@ export function getDb(): DB {
   return load();
 }
 
+/** Called after every saved change (and after a reset), e.g. to refresh the Copilot's search index. */
+const listeners = new Set<() => void>();
+export function onDbChange(fn: () => void) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+const changed = () => {
+  for (const fn of listeners) {
+    try {
+      fn();
+    } catch (e) {
+      console.error("[clearaid] change listener failed", e);
+    }
+  }
+};
+
 export function mutate<T>(fn: (db: DB) => T): T {
   const db = load();
   const out = fn(db);
   persist(db);
+  changed();
   return out;
 }
 
@@ -62,7 +112,9 @@ export function resetDb() {
   } catch {
     /* ignore */
   }
-  return load();
+  const db = load();
+  changed();
+  return db;
 }
 
 /** Serialise async work per key (e.g. per fund) so balances can't race. */

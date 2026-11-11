@@ -1,4 +1,5 @@
 import { audit } from "@/lib/audit";
+import { roleLabel } from "@/lib/types";
 import { getDb, mutate } from "@/lib/db";
 import { handle, json, setCookie } from "@/lib/http";
 import { HttpError, ngoCookieValue, ngoMember, SESSION_COOKIE, verifyPassword } from "@/lib/session";
@@ -33,6 +34,6 @@ export const POST = handle(async (req: Request) => {
     throw new HttpError(403, "This account has been deactivated. Ask an NGO admin to reactivate it.");
   }
   failures.delete(username);
-  mutate((d) => audit(d, { actor: { id: m.id, name: m.name }, action: "auth.login", summary: `Signed in (${m.role === "admin" ? "admin" : "staff"})` }));
+  mutate((d) => audit(d, { actor: { id: m.id, name: m.name }, action: "auth.login", summary: `Signed in (${roleLabel(m.role)})` }));
   return setCookie(json({ ok: true, member: ngoMember(m.id) }), SESSION_COOKIE, ngoCookieValue(m));
 });

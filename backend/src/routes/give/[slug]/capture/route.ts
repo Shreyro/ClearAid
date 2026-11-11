@@ -4,6 +4,7 @@ import { recordDonation } from "@/lib/funds";
 import { type Ctx, handle, json } from "@/lib/http";
 import { fmt } from "@/lib/money";
 import { captureDonationOrder } from "@/lib/paypal";
+import { connOf, defaultAccount, findPayPalAccount } from "@/lib/paypal-accounts";
 import { HttpError } from "@/lib/session";
 import { givableFund } from "../../shared";
 
@@ -19,7 +20,9 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ slug: string }>) => {
   if (!order) throw new HttpError(404, "Donation not found. Start again from the donation link.");
   if (order.status === "captured") return json({ ok: true, already: true, message: `Thank you. Your ${fmt(order.amount)} gift is recorded.` });
 
-  const cap = await captureDonationOrder(order.orderId, order.amount);
+  // Capture on the account the order was created on (older orders: the default account).
+  const account = findPayPalAccount(db, fund.ngoId, order.accountId) ?? defaultAccount(fund.ngoId);
+  const cap = await captureDonationOrder(connOf(account), order.orderId, order.amount);
   if (cap.status !== "COMPLETED") throw new HttpError(402, `PayPal reports the payment as ${cap.status.toLowerCase()}. Nothing was recorded.`);
   const entry = mutate((d) => {
     const o = d.orders.find((x) => x.orderId === order.orderId)!;
@@ -29,6 +32,7 @@ export const POST = handle(async (req: Request, ctx: Ctx<{ slug: string }>) => {
       fundId: fund.id,
       amount: cap.amount,
       captureId: cap.captureId,
+      accountId: account.id,
       orderId: o.orderId,
       live: cap.live,
       donorEmail: o.donorEmail ?? cap.payerEmail,

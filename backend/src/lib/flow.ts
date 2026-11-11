@@ -92,6 +92,13 @@ export function buildFlow(db: DB, funds: Fund[], opts: { ngoId: string; includeU
     }
   }
 
+  // ---- Payments staff declared from a receipt (voided ones are left out; their bank line, if any, is matched, not counted).
+  for (const p of db.payments ?? []) {
+    if (p.status === "void" || !ids.has(p.fundId)) continue;
+    const d = catDest(p.category);
+    spend(`fund:${p.fundId}`, d.id, d.label, p.publicPayee, p.amount, title(p.fundId), "Declared payment");
+  }
+
   // ---- Bank lines: current allocations (net of retags), plus untraced lines.
   const accounts = new Map(db.bankAccounts.filter((a) => a.ngoId === opts.ngoId).map((a) => [a.id, a]));
   for (const t of db.bankTxns) {

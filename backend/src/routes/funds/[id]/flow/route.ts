@@ -14,9 +14,11 @@ export const GET = handle(async (_req: Request, ctx: Ctx<{ id: string }>) => {
   const threshold = controlsOf(db, me.ngoId).receiptThreshold;
   const payments = db.bankTxns.filter((t) => t.amount < 0 && !t.isFee && t.allocations.some((a) => a.fundId === fund.id));
   const paid = db.withdrawals.filter((w) => w.fundId === fund.id && w.status === "paid");
+  // Declared payments always carry their receipt; their bank line (if any) is matched, not counted again.
+  const declared = (db.payments ?? []).filter((p) => p.fundId === fund.id && p.status !== "void");
   const evidence = {
-    payments: payments.length + paid.length,
-    withReceipt: payments.filter((t) => t.receipts?.length).length + paid.filter((w) => w.receiptFileIds.length).length,
+    payments: payments.length + paid.length + declared.length,
+    withReceipt: payments.filter((t) => t.receipts?.length).length + paid.filter((w) => w.receiptFileIds.length).length + declared.filter((p) => p.receipt).length,
     missingAboveThreshold: payments.filter((t) => Math.abs(t.amount) >= threshold && !t.receipts?.length).length,
     threshold,
   };

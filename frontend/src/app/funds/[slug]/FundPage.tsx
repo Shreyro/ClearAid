@@ -13,6 +13,7 @@ import { CAT_LABEL } from "@/components/SpendCard";
 import { CodeChip } from "@/components/banking";
 import { Sankey, type FlowGraph } from "@/components/Sankey";
 import { PartyTable, type Party } from "@/components/FlowParts";
+import { CloseFund } from "@/components/CloseFund";
 
 type Detail = {
   fund: {
@@ -50,7 +51,9 @@ export function FundPage({ slug }: { slug: string }) {
   const { data: flow, reload: reloadFlow } = useJson<Flow>(`/api/funds/${slug}/flow`);
   const { data: ledger, reload: reloadLedger } = useJson<{ entries: LedgerEntry[] }>(`/api/funds/${slug}/ledger`);
   const [view, setView] = useState<"category" | "payee">("payee");
-  const isAdmin = useMe().me.role === "admin";
+  const { me } = useMe();
+  const isAdmin = me.role === "admin";
+  const isDonor = me.role === "donor";
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -105,8 +108,8 @@ export function FundPage({ slug }: { slug: string }) {
         <div className={clsx("grid grid-cols-2 gap-4", returned > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
           <div className="card p-4"><Stat label="Money in" value={usd(stats.raised, true)} sub={`from ${flow ? flow.sources.length : "…"} payers`} /></div>
           <div className="card p-4"><Stat label="Money out" value={usd(stats.spent, true)} sub={`to ${flow ? flow.payees.length : "…"} payees`} /></div>
-          {returned > 0 && <div className="card p-4"><Stat label="Returned" value={usd(returned, true)} sub="refunds and carry-forwards" /></div>}
-          <div className="card p-4"><Stat label="Still held" value={usd(stats.balance, true)} sub={stats.raised ? `${Math.round((stats.balance / stats.raised) * 100)}% of money in` : "—"} /></div>
+          {returned > 0 && <div className="card p-4"><Stat label={stats.refunded ? "Returned" : "Moved to other funds"} value={usd(returned, true)} sub={stats.refunded ? "refunds and moves to other funds" : "leftover money, moved by an admin"} /></div>}
+          <div className="card p-4"><Stat label="Still held" value={usd(stats.balance, true)} sub={fund.status === "closed" ? (stats.balance ? "in the bank, after closure" : "nothing left") : stats.raised ? `${Math.round((stats.balance / stats.raised) * 100)}% of money in` : "—"} /></div>
         </div>
 
         <Section
@@ -140,6 +143,8 @@ export function FundPage({ slug }: { slug: string }) {
           </div>
         )}
 
+        {isAdmin && <CloseFund fundId={fund.id} title={fund.title} stamp={ledger?.entries.length} onDone={refresh} />}
+
         <div className="grid md:grid-cols-2 gap-6">
           <Section title="Money in vs money out">
             {ledger ? <MoneyFlowChart entries={ledger.entries} startedAt={fund.startedAt} /> : <div className="h-56" />}
@@ -148,14 +153,21 @@ export function FundPage({ slug }: { slug: string }) {
             title="Spending by category"
             action={
               flow && flow.evidence.payments > 0 ? (
-                <Link
-                  href="/untagged?status=receipts"
-                  className={clsx("inline-flex items-center gap-1 text-xs font-semibold", flow.evidence.missingAboveThreshold ? "text-[#7a5200]" : "text-ink-2")}
-                  title={`Bank payments of ${usd(flow.evidence.threshold)} or more should have a receipt`}
-                >
-                  <Receipt className="h-3.5 w-3.5" /> {flow.evidence.withReceipt}/{flow.evidence.payments} payments have a receipt
-                  {flow.evidence.missingAboveThreshold > 0 && ` · ${flow.evidence.missingAboveThreshold} missing`}
-                </Link>
+                isDonor ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-ink-2">
+                    <Receipt className="h-3.5 w-3.5" /> {flow.evidence.withReceipt}/{flow.evidence.payments} payments have a receipt
+                    {flow.evidence.missingAboveThreshold > 0 && ` · ${flow.evidence.missingAboveThreshold} missing`}
+                  </span>
+                ) : (
+                  <Link
+                    href="/untagged?status=receipts"
+                    className={clsx("inline-flex items-center gap-1 text-xs font-semibold", flow.evidence.missingAboveThreshold ? "text-warn-ink" : "text-ink-2")}
+                    title={`Bank payments of ${usd(flow.evidence.threshold)} or more should have a receipt`}
+                  >
+                    <Receipt className="h-3.5 w-3.5" /> {flow.evidence.withReceipt}/{flow.evidence.payments} payments have a receipt
+                    {flow.evidence.missingAboveThreshold > 0 && ` · ${flow.evidence.missingAboveThreshold} missing`}
+                  </Link>
+                )
               ) : null
             }
           >

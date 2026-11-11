@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   // client and API routes are dynamic. We use the classic (non Cache Components)
   // rendering model to keep that behaviour explicit.
   serverExternalPackages: ["@paypal/agent-toolkit"],
+  // The Docker image sets NEXT_OUTPUT=standalone: the build then carries its own
+  // minimal server and dependencies (node .next/standalone/server.js), so the
+  // runtime image needs no node_modules. Local dev and `next start` are unchanged.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   // All API routes live in the separate Hono backend (../backend). Proxy them
   // so the client can keep using same-origin `/api/...` URLs and cookies.
   async rewrites() {

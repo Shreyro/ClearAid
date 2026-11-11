@@ -1,20 +1,133 @@
-# Backend API in Docker. Run the frontend with `npm run dev` in ./frontend
-# (it proxies /api/* to BACKEND_URL, default http://localhost:4000).
+# ClearAid, the whole stack:
+#
+#   web      Next.js UI, the only service published to the host. It proxies /api/* to the API.
+#   backend  Hono API + JSON store (volume clearaid-data).
+#   rag      FAISS retrieval service for the Copilot (volume clearaid-rag).
+#   ollama   Local models: embeddings for rag, Llama for Copilot answers (volume clearaid-models).
+#   models   One-shot jobs that pull the two models into the ollama volume.
+#
+# Start:   docker compose up -d --build        then open http://localhost:3000
+# Logs:    docker compose logs -f backend rag
+# Stop:    docker compose down                 (data stays in the volumes; add -v to wipe it)
+#
+# Settings come from ./.env (copy .env.example) and API keys from ./backend/.env.
+# The first start downloads the models (~5 GB); the app is usable before that
+# finishes, and the Copilot starts answering once the chat model is in.
+
+name: clearaid
+
+x-ollama-image: &ollama-image ollama/ollama:${OLLAMA_VERSION:-0.40.16}
+
 services:
+  web:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:4000
+    image: clearaid-web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [edge, internal]
+    restart: unless-stopped
+
   backend:
     build: ./backend
     image: clearaid-backend
-    ports:
-      - "4000:4000"
     env_file:
-      - path: ./backend/.env
+      - path: ./backend/.env # PayPal, Plaid, Anthropic keys (optional)
         required: false
     environment:
-      DATA_DIR: /data # always the volume, whatever backend/.env says
+      # These always win over backend/.env, which is written for running on the host.
+      DATA_DIR: /data
       PORT: "4000"
+      HOST: 0.0.0.0
+      APP_URL: ${PUBLIC_URL:-http://localhost:3000}
+      SESSION_SECRET: ${SESSION_SECRET:-} # empty: a random one is generated once and kept in the data volume
+      OLLAMA_URL: http://ollama:11434
+      COPILOT_MODEL: ${COPILOT_MODEL:-llama3.1:8b}
+      RAG_URL: http://rag:8790
+      RAG_TOKEN: ${RAG_TOKEN:-}
     volumes:
       - clearaid-data:/data
+    depends_on:
+      rag:
+        condition: service_healthy
+    networks: [internal]
     restart: unless-stopped
 
+  rag:
+    build: ./rag
+    image: clearaid-rag
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      RAG_TOKEN: ${RAG_TOKEN:-}
+    volumes:
+      - clearaid-rag:/index
+    depends_on:
+      ollama:
+        condition: service_healthy
+      models-embed:
+        condition: service_completed_successfully
+    networks: [internal]
+    restart: unless-stopped
+
+  ollama:
+    image: *ollama-image
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m # keep the chat model loaded between questions
+    volumes:
+      - clearaid-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+    networks: [internal]
+    restart: unless-stopped
+    # NVIDIA GPU (Linux host with the NVIDIA Container Toolkit): uncomment for much faster answers.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  # Small (~270 MB): search needs it, so rag waits for it.
+  models-embed:
+    image: *ollama-image
+    entrypoint: ["ollama", "pull", "${EMBED_MODEL:-nomic-embed-text}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
+
+  # Large (~4.9 GB): nothing waits for it. Watch with: docker compose logs -f models-chat
+  models-chat:
+    image: *ollama-image
+    entrypoint: ["ollama", "pull", "${COPILOT_MODEL:-llama3.1:8b}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
+
+networks:
+  # Only the UI sits on the edge network with a published port.
+  edge: {}
+  # The API, rag and ollama talk to each other here and are never published.
+  # Not "internal: true": the API calls PayPal, Plaid and Anthropic, and ollama
+  # downloads models, so both need the internet.
+  internal: {}
+
 volumes:
-  clearaid-data:
+  clearaid-data: # db.json, uploads, the session secret
+  clearaid-rag: # FAISS indexes + embedding cache
+  clearaid-models: # Ollama models

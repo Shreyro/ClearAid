@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
-import { Download, Loader2, Plus, X } from "lucide-react";
+import { Download, Loader2, Minus, Plus, X } from "lucide-react";
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
 import { api, useJson, useLive, usd } from "@/components/hooks";
 import { gridTheme } from "@/components/LedgerGrid";
+import { DeclaredPayments, RecordPayment } from "@/components/RecordPayment";
 
 type Tx = {
   id: string;
@@ -31,29 +32,34 @@ type Tx = {
   paypalRef?: string;
   hash: string;
 };
-type Resp = { transactions: Tx[]; totals: { in: number; out: number; count: number }; funds: { id: string; title: string }[] };
+type Resp = { transactions: Tx[]; totals: { in: number; out: number; count: number }; funds: { id: string; title: string }[]; accounts?: { key: string; name: string; kind: "paypal" | "bank" }[] };
 
 export default function TransactionsPage() {
   const { me } = useMe();
   const [fund, setFund] = useState("");
+  const [account, setAccount] = useState("");
   const [direction, setDirection] = useState("money");
   const [q, setQ] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [recording, setRecording] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // Deep links from Money flow and Sources (?direction=…&q=…&fund=…).
+  // Deep links from Money flow and Sources (?direction=…&q=…&fund=…&account=…).
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     /* eslint-disable react-hooks/set-state-in-effect */
     if (p.get("direction")) setDirection(p.get("direction")!);
     if (p.get("q")) setQ(p.get("q")!);
     if (p.get("fund")) setFund(p.get("fund")!);
+    if (p.get("account")) setAccount(p.get("account")!);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const params = new URLSearchParams();
   if (fund) params.set("fund", fund);
+  if (account) params.set("account", account);
   if (direction !== "money") params.set("direction", direction);
   if (q.trim()) params.set("q", q.trim());
   if (from) params.set("from", from);
@@ -77,7 +83,7 @@ export default function TransactionsPage() {
         type: "rightAligned",
         cellClass: "tnum",
         valueFormatter: (p) => (p.value === 0 ? "—" : `${p.value > 0 ? "+" : "−"}${usd(Math.abs(p.value))}`),
-        cellStyle: (p) => ({ color: p.value < 0 ? "#9b3d17" : p.value > 0 ? "#006300" : "#898781", fontWeight: 600 }),
+        cellStyle: (p) => ({ color: p.value < 0 ? "var(--out-ink)" : p.value > 0 ? "var(--good-ink)" : "var(--muted)", fontWeight: 600 }),
       },
       { field: "via", headerName: "Via", width: 190, tooltipField: "via" },
       { field: "typeLabel", headerName: "Type", width: 140 },
@@ -88,7 +94,12 @@ export default function TransactionsPage() {
         headerName: "",
         width: 90,
         sortable: false,
-        cellRenderer: (p: { data?: Tx }) => (p.data?.detailHref ? <Link href={p.data.detailHref} className="text-brand underline text-xs">Evidence →</Link> : null),
+        cellRenderer: (p: { data?: Tx }) =>
+          !p.data?.detailHref ? null : p.data.detailHref.startsWith("/api/") ? (
+            <a href={p.data.detailHref} target="_blank" rel="noreferrer" className="text-brand underline text-xs">Receipt →</a>
+          ) : (
+            <Link href={p.data.detailHref} className="text-brand underline text-xs">Evidence →</Link>
+          ),
       },
       { field: "hash", headerName: "Ledger hash", width: 120, valueFormatter: (p) => `${String(p.value).slice(0, 10)}…`, cellClass: "font-mono text-xs", tooltipField: "hash" },
     ],
@@ -104,15 +115,23 @@ export default function TransactionsPage() {
       actions={
         <>
           <a href={`/api/transactions?${new URLSearchParams({ ...Object.fromEntries(params), format: "csv" })}`} className="btn btn-ghost"><Download className="h-4 w-4" /> Export CSV</a>
-          <button className="btn btn-primary" onClick={() => setRecording((r) => !r)}>{recording ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Record incoming</button>
+          {me.role !== "donor" && (
+            <>
+              <button className="btn btn-primary" onClick={() => { setPaying((r) => !r); setRecording(false); }}>{paying ? <X className="h-4 w-4" /> : <Minus className="h-4 w-4" />} Record payment</button>
+              <button className="btn btn-primary" onClick={() => { setRecording((r) => !r); setPaying(false); }}>{recording ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Record incoming</button>
+            </>
+          )}
         </>
       }
     >
+      {notice && <div className="card p-3 mb-4 text-sm bg-brand-wash border-brand-line flex items-start justify-between gap-2">{notice}<button onClick={() => setNotice(null)} aria-label="Dismiss"><X className="h-4 w-4" /></button></div>}
+      {paying && <RecordPayment funds={data?.funds ?? []} isAdmin={me.role === "admin"} onDone={(m) => { setPaying(false); setNotice(m); void reload(); }} />}
+      {me.role !== "donor" && <DeclaredPayments meId={me.id} isAdmin={me.role === "admin"} onChanged={(m) => { setNotice(m); void reload(); }} />}
       {recording && <RecordIncoming funds={data?.funds ?? []} isAdmin={me.role === "admin"} onDone={() => { setRecording(false); void reload(); }} />}
 
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="card p-3"><div className="text-xs text-muted">Money in</div><div className="text-lg font-semibold tnum text-good-ink">{data ? usd(data.totals.in) : "—"}</div></div>
-        <div className="card p-3"><div className="text-xs text-muted">Money out</div><div className="text-lg font-semibold tnum text-[#9b3d17]">{data ? usd(data.totals.out) : "—"}</div></div>
+        <div className="card p-3"><div className="text-xs text-muted">Money out</div><div className="text-lg font-semibold tnum text-out-ink">{data ? usd(data.totals.out) : "—"}</div></div>
         <div className="card p-3"><div className="text-xs text-muted">Net · {data?.totals.count ?? 0} entries</div><div className="text-lg font-semibold tnum">{data ? `${net < 0 ? "−" : ""}${usd(Math.abs(net))}` : "—"}</div></div>
       </div>
 
@@ -124,6 +143,19 @@ export default function TransactionsPage() {
             {data?.funds.map((f) => <option key={f.id} value={f.id}>{f.title}</option>)}
           </select>
         </div>
+        {data?.accounts && data.accounts.length > 0 && (
+          <div className="min-w-[12rem] flex-1 sm:flex-none">
+            <label className="label" htmlFor="tx-acc">Account</label>
+            <select id="tx-acc" className="input !py-1.5 text-sm" value={account} onChange={(e) => setAccount(e.target.value)}>
+              <option value="">All accounts</option>
+              {(["paypal", "bank"] as const).map((k) => (
+                <optgroup key={k} label={k === "paypal" ? "PayPal" : "Bank"}>
+                  {data.accounts!.filter((a) => a.kind === k).map((a) => <option key={a.key} value={a.key}>{a.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <span className="label">Direction</span>
           <div className="flex rounded-lg border border-line overflow-hidden text-xs font-semibold">

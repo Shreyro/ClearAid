@@ -13,10 +13,10 @@ export const gridTheme = themeQuartz.withParams({
   fontSize: 13,
   headerFontSize: 12,
   headerFontWeight: 600,
-  borderColor: "#e7e6e0",
-  headerBackgroundColor: "#fcfcfb",
-  rowHoverColor: "#f6f6f2",
-  accentColor: "#0f766e",
+  borderColor: "var(--line)",
+  headerBackgroundColor: "var(--surface-2)",
+  rowHoverColor: "var(--page)",
+  accentColor: "var(--brand)",
   wrapperBorderRadius: 12,
   spacing: 6,
 });
@@ -39,6 +39,7 @@ const TYPE_LABEL: Record<string, string> = {
   fund_opened: "Fund opened",
   donation: "Donation",
   withdrawal: "Vendor payout",
+  expense: "Declared payment",
   withdrawal_rejected: "Request rejected",
   refund: "Refund",
   carry_forward_out: "Carried forward out",
@@ -80,7 +81,7 @@ export function LedgerGrid({ entries, fundId }: { entries: LedgerEntry[]; fundId
         type: "rightAligned",
         cellClass: "tnum",
         valueFormatter: (p) => (p.value === 0 ? "—" : `${p.value > 0 ? "+" : "−"}${usd(Math.abs(p.value))}`),
-        cellStyle: (p) => ({ color: p.value < 0 ? "#9b3d17" : p.value > 0 ? "#006300" : "#898781", fontWeight: 600 }),
+        cellStyle: (p) => ({ color: p.value < 0 ? "var(--out-ink)" : p.value > 0 ? "var(--good-ink)" : "var(--muted)", fontWeight: 600 }),
       },
       { field: "actor", headerName: "Who", width: 190 },
       { field: "memo", headerName: "Memo (PII-redacted)", flex: 1, minWidth: 260, tooltipField: "memo" },
@@ -139,7 +140,7 @@ export function LedgerGrid({ entries, fundId }: { entries: LedgerEntry[]; fundId
       <div style={{ height: 420 }}>
         <AgGridReact<LedgerEntry> theme={gridTheme} rowData={rows} columnDefs={cols} getRowId={(p) => String(p.data.seq)} pagination paginationPageSize={50} paginationPageSizeSelector={false} tooltipShowDelay={300} enableCellTextSelection />
       </div>
-      <p className="text-[11px] text-muted mt-2">
+      <p className="text-xs text-muted mt-2">
         Each entry stores the SHA-256 of the previous one, so editing or deleting any past entry breaks every hash after it. &quot;Verify&quot; recomputes the whole chain locally with WebCrypto, so auditors can check it without trusting the server.
       </p>
     </div>

@@ -1,13 +1,25 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { config, paypalApiBase, paypalLive } from "./config";
 import { toValue } from "./money";
 
 /**
  * Thin PayPal REST client (Orders v2, Payments v2 refunds, Payouts v1,
- * webhook verification). When no credentials are configured every call is
- * simulated so the full product can be demoed offline; simulated IDs are
- * prefixed with "SIM-" and the UI labels them as such.
+ * webhook verification). Every call names the PayPal account it acts on, so an
+ * NGO can run several (see paypal-accounts.ts). A simulated account moves no
+ * money: its IDs are prefixed with "SIM-" and the UI labels them as such.
  */
+
+/** One PayPal account's credentials, resolved server-side. */
+export type PayPalConn = {
+  id: string;
+  name: string;
+  env: "sandbox" | "live";
+  live: boolean;
+  clientId: string;
+  clientSecret: string;
+  webhookId: string;
+};
+
+export const paypalBase = (env: PayPalConn["env"]) => (env === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com");
 
 export class PayPalError extends Error {
   constructor(message: string, public status: number, public details?: unknown) {
@@ -15,29 +27,32 @@ export class PayPalError extends Error {
   }
 }
 
-let cachedToken: { token: string; exp: number } | null = null;
+const tokens = new Map<string, { token: string; exp: number }>();
 
-async function accessToken(): Promise<string> {
-  if (cachedToken && cachedToken.exp > Date.now() + 60_000) return cachedToken.token;
-  const auth = Buffer.from(`${config.paypal.clientId}:${config.paypal.clientSecret}`).toString("base64");
-  const res = await fetch(`${paypalApiBase()}/v1/oauth2/token`, {
+async function accessToken(c: PayPalConn): Promise<string> {
+  const cacheKey = `${c.env}|${c.clientId}`;
+  const cached = tokens.get(cacheKey);
+  if (cached && cached.exp > Date.now() + 60_000) return cached.token;
+  const auth = Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64");
+  const res = await fetch(`${paypalBase(c.env)}/v1/oauth2/token`, {
     method: "POST",
     headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
     body: "grant_type=client_credentials",
   });
   const json = (await res.json()) as { access_token?: string; expires_in?: number; error_description?: string };
   if (!res.ok || !json.access_token) throw new PayPalError(json.error_description || "PayPal auth failed", res.status, json);
-  cachedToken = { token: json.access_token, exp: Date.now() + (json.expires_in ?? 3000) * 1000 };
+  tokens.set(cacheKey, { token: json.access_token, exp: Date.now() + (json.expires_in ?? 3000) * 1000 });
   return json.access_token;
 }
 
-export async function paypalAccessToken() {
-  return accessToken();
+/** Check a client ID and secret by asking PayPal for a token; throws PayPalError if they're wrong. */
+export async function checkCredentials(c: PayPalConn) {
+  await accessToken(c);
 }
 
-async function api<T>(path: string, init: { method?: string; body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
-  const token = await accessToken();
-  const res = await fetch(`${paypalApiBase()}${path}`, {
+async function api<T>(c: PayPalConn, path: string, init: { method?: string; body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
+  const token = await accessToken(c);
+  const res = await fetch(`${paypalBase(c.env)}${path}`, {
     method: init.method ?? "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -60,10 +75,10 @@ const sim = (prefix: string) => `SIM-${prefix}-${randomBytes(5).toString("hex").
 
 // ---------------------------------------------------------------- Orders ----
 
-export async function createDonationOrder(args: { amount: number; fundId: string; fundTitle: string; reference: string }) {
-  if (!paypalLive()) return { id: sim("ORDER"), status: "CREATED", live: false };
+export async function createDonationOrder(c: PayPalConn, args: { amount: number; fundId: string; fundTitle: string; reference: string }) {
+  if (!c.live) return { id: sim("ORDER"), status: "CREATED", live: false };
   const value = toValue(args.amount);
-  const order = await api<{ id: string; status: string }>("/v2/checkout/orders", {
+  const order = await api<{ id: string; status: string }>(c, "/v2/checkout/orders", {
     method: "POST",
     body: {
       intent: "CAPTURE",
@@ -112,8 +127,8 @@ export interface CaptureResult {
   live: boolean;
 }
 
-export async function captureDonationOrder(orderId: string, simulatedAmount: number): Promise<CaptureResult> {
-  if (!paypalLive()) {
+export async function captureDonationOrder(c: PayPalConn, orderId: string, simulatedAmount: number): Promise<CaptureResult> {
+  if (!c.live) {
     return { orderId, captureId: sim("CAP"), status: "COMPLETED", amount: simulatedAmount, live: false };
   }
   type Cap = {
@@ -122,7 +137,7 @@ export async function captureDonationOrder(orderId: string, simulatedAmount: num
     payer?: { email_address?: string; name?: { given_name?: string; surname?: string } };
     purchase_units: { payments: { captures: { id: string; status: string; amount: { value: string } }[] } }[];
   };
-  const r = await api<Cap>(`/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, { method: "POST", body: {} });
+  const r = await api<Cap>(c, `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, { method: "POST", body: {} });
   const cap = r.purchase_units?.[0]?.payments?.captures?.[0];
   if (!cap) throw new PayPalError("Capture missing from PayPal response", 502, r);
   return {
@@ -138,11 +153,11 @@ export async function captureDonationOrder(orderId: string, simulatedAmount: num
 
 // --------------------------------------------------------------- Refunds ----
 
-export async function refundCapture(captureId: string, amount: number, note: string) {
-  if (!paypalLive() || captureId.startsWith("SIM-")) {
+export async function refundCapture(c: PayPalConn, captureId: string, amount: number, note: string) {
+  if (!c.live || captureId.startsWith("SIM-")) {
     return { id: sim("REFUND"), status: "COMPLETED", live: false };
   }
-  const r = await api<{ id: string; status: string }>(`/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
+  const r = await api<{ id: string; status: string }>(c, `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
     method: "POST",
     body: { amount: { currency_code: "USD", value: toValue(amount) }, note_to_payer: note.slice(0, 255) },
   });
@@ -151,9 +166,9 @@ export async function refundCapture(captureId: string, amount: number, note: str
 
 // --------------------------------------------------------------- Payouts ----
 
-export async function sendVendorPayout(args: { withdrawalId: string; email: string; amount: number; note: string }) {
-  if (!paypalLive()) return { batchId: sim("PAYOUT"), status: "SUCCESS", live: false };
-  const r = await api<{ batch_header: { payout_batch_id: string; batch_status: string } }>("/v1/payments/payouts", {
+export async function sendVendorPayout(c: PayPalConn, args: { withdrawalId: string; email: string; amount: number; note: string }) {
+  if (!c.live) return { batchId: sim("PAYOUT"), status: "SUCCESS", live: false };
+  const r = await api<{ batch_header: { payout_batch_id: string; batch_status: string } }>(c, "/v1/payments/payouts", {
     method: "POST",
     idempotencyKey: `payout-${args.withdrawalId}`,
     body: {
@@ -178,9 +193,9 @@ export async function sendVendorPayout(args: { withdrawalId: string; email: stri
 
 // -------------------------------------------------------------- Webhooks ----
 
-export async function verifyWebhook(headers: Headers, event: unknown): Promise<boolean> {
-  if (!paypalLive() || !config.paypal.webhookId) return false;
-  const r = await api<{ verification_status: string }>("/v1/notifications/verify-webhook-signature", {
+export async function verifyWebhook(c: PayPalConn, headers: Headers, event: unknown): Promise<boolean> {
+  if (!c.live || !c.webhookId) return false;
+  const r = await api<{ verification_status: string }>(c, "/v1/notifications/verify-webhook-signature", {
     method: "POST",
     body: {
       auth_algo: headers.get("paypal-auth-algo"),
@@ -188,7 +203,7 @@ export async function verifyWebhook(headers: Headers, event: unknown): Promise<b
       transmission_id: headers.get("paypal-transmission-id"),
       transmission_sig: headers.get("paypal-transmission-sig"),
       transmission_time: headers.get("paypal-transmission-time"),
-      webhook_id: config.paypal.webhookId,
+      webhook_id: c.webhookId,
       webhook_event: event,
     },
   });
@@ -197,8 +212,8 @@ export async function verifyWebhook(headers: Headers, event: unknown): Promise<b
 
 // ------------------------------------------------------------- Reporting ----
 
-export async function listRecentTransactions(days = 30) {
-  if (!paypalLive()) return null;
+export async function listRecentTransactions(c: PayPalConn, days = 30) {
+  if (!c.live) return null;
   const end = new Date();
   const start = new Date(end.getTime() - Math.min(days, 31) * 86400_000);
   const q = new URLSearchParams({
@@ -207,5 +222,5 @@ export async function listRecentTransactions(days = 30) {
     fields: "transaction_info",
     page_size: "200",
   });
-  return api<{ transaction_details: { transaction_info: Record<string, unknown> }[] }>(`/v1/reporting/transactions?${q}`);
+  return api<{ transaction_details: { transaction_info: Record<string, unknown> }[] }>(c, `/v1/reporting/transactions?${q}`);
 }

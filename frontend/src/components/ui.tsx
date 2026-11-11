@@ -6,19 +6,19 @@ import type { ReactNode } from "react";
 
 export function Pill({ children, tone = "neutral", className }: { children: ReactNode; tone?: "neutral" | "good" | "warn" | "bad" | "brand" | "info"; className?: string }) {
   const tones = {
-    neutral: "bg-[#f1f0ec] text-ink-2",
-    good: "bg-[#e7f6e7] text-good-ink",
-    warn: "bg-[#fff4d6] text-[#7a5200]",
-    bad: "bg-[#fbe9e9] text-[#9b2424]",
+    neutral: "bg-[var(--pill-neutral,#f1f0ec)] text-ink-2",
+    good: "bg-good-wash text-good-ink",
+    warn: "bg-warn-wash text-warn-ink",
+    bad: "bg-bad-wash text-bad-ink",
     brand: "bg-brand-wash text-brand-ink",
-    info: "bg-[#e8f1fc] text-[#1c4f8f]",
+    info: "bg-info-wash text-info-ink",
   } as const;
   return <span className={clsx("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap", tones[tone], className)}>{children}</span>;
 }
 
 export function StatusIcon({ status, className = "h-4 w-4" }: { status: "pass" | "warn" | "fail" | string; className?: string }) {
   if (status === "pass") return <CheckCircle2 className={clsx(className, "text-good shrink-0")} aria-label="Pass" />;
-  if (status === "warn") return <AlertTriangle className={clsx(className, "text-[#c98a00] shrink-0")} aria-label="Warning" />;
+  if (status === "warn") return <AlertTriangle className={clsx(className, "text-warn-icon shrink-0")} aria-label="Warning" />;
   if (status === "fail") return <XCircle className={clsx(className, "text-critical shrink-0")} aria-label="Fail" />;
   return <CircleHelp className={clsx(className, "text-muted shrink-0")} />;
 }
@@ -77,7 +77,7 @@ export function Section({ title, action, children, className, id }: { title: Rea
 export function Meter({ value, max, color = "var(--brand)" }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div className="h-2 rounded-full bg-[#ecebe6] overflow-hidden" role="meter" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+    <div className="h-2 rounded-full bg-track overflow-hidden" role="meter" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
       <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${pct}%`, background: color }} />
     </div>
   );

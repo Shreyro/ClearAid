@@ -24,14 +24,14 @@ export const piiLabels = (kinds: string[]) => kinds.map((k) => PII_LABEL[k] ?? k
 export function AnonymisedNote({ kinds, short }: { kinds: string[]; short?: boolean }) {
   if (!kinds.length) return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted" title="Replaced before the line was stored. A person keeps the same alias on every line; the bank reference is unchanged.">
+    <span className="inline-flex items-center gap-1 text-xs text-muted" title="Replaced before the line was stored. A person keeps the same alias on every line; the bank reference is unchanged.">
       <EyeOff className="h-3 w-3 shrink-0" aria-hidden /> {short ? "Anonymised" : `Anonymised on import: ${piiLabels(kinds)}`}
     </span>
   );
 }
 
 export function CodeChip({ code }: { code: string }) {
-  return <span className="inline-flex items-center rounded-md border border-[#bfe3dc] bg-brand-wash px-1.5 py-0.5 font-mono text-[11px] font-semibold text-brand-ink">#{code}</span>;
+  return <span className="inline-flex items-center rounded-md border border-brand-line bg-brand-wash px-1.5 py-0.5 font-mono text-xs font-semibold text-brand-ink">#{code}</span>;
 }
 
 /** Inline editor for a fund's tracking codes (admins). */
@@ -61,7 +61,7 @@ export function CodesEditor({ fundId, codes, editable, onSaved }: { fundId: stri
         {codes.length ? codes.map((c) => <CodeChip key={c} code={c} />) : <span className="text-xs text-muted">None</span>}
         {editable && (
           <button
-            className="p-1 rounded text-muted hover:text-ink hover:bg-[#efeee9]"
+            className="p-1 rounded text-muted hover:text-ink hover:bg-hover"
             onClick={() => {
               setText(codes.join(", "));
               setEditing(true);
@@ -86,9 +86,9 @@ export function CodesEditor({ fundId, codes, editable, onSaved }: { fundId: stri
       <div className="flex items-center gap-1">
         <input autoFocus className="input !py-1 text-xs font-mono" value={text} onChange={(e) => setText(e.target.value.toUpperCase())} placeholder="RO1, ASHA" aria-label="Tracking codes, comma separated" />
         <button className="p-1.5 rounded text-brand hover:bg-brand-wash" disabled={busy} aria-label="Save codes">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}</button>
-        <button type="button" className="p-1.5 rounded text-muted hover:bg-[#efeee9]" onClick={() => setEditing(false)} aria-label="Cancel"><X className="h-3.5 w-3.5" /></button>
+        <button type="button" className="p-1.5 rounded text-muted hover:bg-hover" onClick={() => setEditing(false)} aria-label="Cancel"><X className="h-3.5 w-3.5" /></button>
       </div>
-      {err ? <p className="text-[11px] text-critical mt-1" role="alert">{err}</p> : <p className="text-[11px] text-muted mt-1">Comma separated. Waiting bank lines are re-checked on save.</p>}
+      {err ? <p className="text-xs text-critical mt-1" role="alert">{err}</p> : <p className="text-xs text-muted mt-1">Comma separated. Waiting bank lines are re-checked on save.</p>}
     </form>
   );
 }

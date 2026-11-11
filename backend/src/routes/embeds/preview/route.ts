@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { buildEmbedPayload, cleanPublish } from "@/lib/embed";
+import { ALL_FUNDS, cleanPublish, payloadFor } from "@/lib/embed";
 import { handle, json } from "@/lib/http";
 import { HttpError, requireNgoAdmin } from "@/lib/session";
 
@@ -9,9 +9,10 @@ import { HttpError, requireNgoAdmin } from "@/lib/session";
  */
 export const POST = handle(async (req: Request) => {
   const admin = await requireNgoAdmin();
-  const b = (await req.json()) as { fundId?: string; publish?: unknown };
+  const b = (await req.json()) as { allFunds?: boolean; fundIds?: string[]; fundId?: string; publish?: unknown };
   const db = getDb();
-  const fund = db.funds.find((f) => f.id === b.fundId && f.ngoId === admin.ngoId);
-  if (!fund) throw new HttpError(400, "Choose the fund to publish");
-  return json(buildEmbedPayload(db, fund, cleanPublish(b.publish)));
+  const sel = b.allFunds ? { fundId: ALL_FUNDS } : { fundId: b.fundIds?.[0] ?? b.fundId ?? "", fundIds: b.fundIds };
+  const payload = payloadFor(db, admin.ngoId, sel, cleanPublish(b.publish));
+  if (!payload) throw new HttpError(400, "Tick at least one fund to publish");
+  return json(payload);
 });

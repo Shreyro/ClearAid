@@ -5,6 +5,7 @@ import { handle, json } from "@/lib/http";
 import { appendLedger } from "@/lib/ledger";
 import { fmt, toCents } from "@/lib/money";
 import { verifyWebhook } from "@/lib/paypal";
+import { connOf, defaultAccount, DEFAULT_PAYPAL } from "@/lib/paypal-accounts";
 
 type Event = { id: string; event_type: string; resource: Record<string, unknown> & { id?: string } };
 
@@ -12,11 +13,18 @@ type Event = { id: string; event_type: string; resource: Record<string, unknown>
  * PayPal webhooks keep the public ledger true even when something happens
  * outside ClearAid: a refund issued from the PayPal dashboard, a dispute, a
  * payout that bounced, or a capture the browser never reported back.
+ *
+ * Each PayPal account sends its webhooks here with ?account=<id> (the main
+ * account: no parameter), and the signature is checked with that account.
  */
 export const POST = handle(async (req: Request) => {
   const raw = await req.text();
   const event = JSON.parse(raw) as Event;
-  if (!(await verifyWebhook(req.headers, event))) return json({ error: "Signature verification failed or not configured" }, 401);
+  const accountId = new URL(req.url).searchParams.get("account") || DEFAULT_PAYPAL;
+  const db0 = getDb();
+  const account = accountId === DEFAULT_PAYPAL ? defaultAccount(db0.ngos[0]?.id ?? "") : (db0.paypalAccounts ?? []).find((a) => a.id === accountId && a.status === "active");
+  if (!account) return json({ error: "Unknown PayPal account" }, 404);
+  if (!(await verifyWebhook(connOf(account), req.headers, event))) return json({ error: "Signature verification failed or not configured" }, 401);
   if (getDb().processedWebhooks.includes(event.id)) return json({ ok: true, duplicate: true });
 
   const r = event.resource;
@@ -27,7 +35,7 @@ export const POST = handle(async (req: Request) => {
       case "PAYMENT.CAPTURE.COMPLETED": {
         if (db.captures.some((c) => c.id === r.id)) break;
         const orderId = (r.supplementary_data as { related_ids?: { order_id?: string } })?.related_ids?.order_id;
-        const pending = db.orders.find((o) => o.orderId === orderId && o.status === "created");
+        const pending = db.orders.find((o) => o.orderId === orderId && o.status === "created" && (o.accountId ?? DEFAULT_PAYPAL) === account.id);
         if (!pending) break;
         pending.status = "captured";
         out.push(
@@ -35,6 +43,7 @@ export const POST = handle(async (req: Request) => {
             fundId: pending.fundId,
             amount: toCents((r.amount as { value: string }).value),
             captureId: String(r.id),
+            accountId: account.id,
             orderId: pending.orderId,
             live: true,
             donorEmail: pending.donorEmail,
@@ -48,7 +57,7 @@ export const POST = handle(async (req: Request) => {
         // resource is the refund; its "up" link points at the capture
         const up = (r.links as { rel: string; href: string }[] | undefined)?.find((l) => l.rel === "up")?.href;
         const capId = up?.split("/").pop();
-        const cap = db.captures.find((c) => c.id === capId);
+        const cap = db.captures.find((c) => c.id === capId && (c.accountId ?? DEFAULT_PAYPAL) === account.id);
         if (!cap || db.ledger.some((l) => l.paypalRef?.split(",").includes(String(r.id)))) break;
         const amt = toCents((r.amount as { value: string }).value);
         const donation = db.donations.find((d) => d.captureIds.includes(cap.id) && d.source === "paypal");

@@ -19,8 +19,8 @@ export default function FundsPage() {
   return (
     <Page
       title="Funds"
-      subtitle={`Each relief fund's trail: what came in, what went out and what's left. ${me.role === "admin" ? "Create funds and set tracking codes in Settings." : "Ask for access to other funds in Settings."}`}
-      actions={<Link href={me.role === "admin" ? "/settings?tab=funds" : "/settings?tab=access"} className="btn btn-ghost">{me.role === "admin" ? "Manage funds" : "Fund access"}</Link>}
+      subtitle={`Each relief fund's trail: what came in, what went out and what's left.${me.role === "admin" ? " Create funds and set tracking codes in Settings." : me.role === "donor" ? "" : " Ask for access to other funds in Settings."}`}
+      actions={me.role === "donor" ? undefined : <Link href={me.role === "admin" ? "/settings?tab=funds" : "/settings?tab=access"} className="btn btn-ghost">{me.role === "admin" ? "Manage funds" : "Fund access"}</Link>}
     >
       {!data ? (
         <div className="grid md:grid-cols-2 gap-4">{[0, 1].map((i) => <div key={i} className="card h-48 animate-pulse" />)}</div>

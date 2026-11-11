@@ -4,7 +4,7 @@ import { buildFlow } from "@/lib/flow";
 import { fundStats } from "@/lib/funds";
 import { handle, json } from "@/lib/http";
 import { movementView } from "@/lib/movements";
-import { getSession, requireNgo, visibleFunds } from "@/lib/session";
+import { getSession, isDonor, requireNgo, visibleFunds } from "@/lib/session";
 
 /**
  * The money-flow overview: where money came from, which fund it went to and
@@ -13,7 +13,8 @@ import { getSession, requireNgo, visibleFunds } from "@/lib/session";
 export const GET = handle(async () => {
   const me = await requireNgo();
   const db = getDb();
-  const funds = visibleFunds(db, await getSession());
+  const session = await getSession();
+  const funds = visibleFunds(db, session);
   const ids = new Set(funds.map((f) => f.id));
   const titles = new Map(funds.map((f) => [f.id, f.title]));
 
@@ -37,18 +38,21 @@ export const GET = handle(async () => {
 
   // Bank lines with no tracking code: money that can't yet be traced to a fund.
   const accounts = new Set(db.bankAccounts.filter((a) => a.ngoId === me.ngoId).map((a) => a.id));
-  const untagged = db.bankTxns.filter((t) => accounts.has(t.accountId) && t.status === "untagged");
+  // Untraced bank money isn't on any fund yet, so donors (who only see their assigned funds) don't get it.
+  const untagged = isDonor(session) ? [] : db.bankTxns.filter((t) => accounts.has(t.accountId) && t.status === "untagged");
   const untaggedIn = untagged.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0);
   const untaggedOut = untagged.filter((t) => t.amount < 0).reduce((a, t) => a - t.amount, 0);
 
-  const flow = buildFlow(db, funds, { ngoId: me.ngoId, includeUntraced: true });
+  const flow = buildFlow(db, funds, { ngoId: me.ngoId, includeUntraced: !isDonor(session) });
   const auditChain = verifyAuditChain(db.auditLog);
 
   const recent = db.ledger
     .filter((e) => ids.has(e.fundId) && e.amount !== 0)
     .sort((a, b) => b.ts.localeCompare(a.ts))
     .slice(0, 10)
-    .map((e) => movementView(db, e, titles.get(e.fundId)!));
+    .map((e) => movementView(db, e, titles.get(e.fundId)!))
+    // Donors don't see other people's contact details.
+    .map((m) => (isDonor(session) ? { ...m, counterpartyEmail: undefined, detailHref: m.type === "expense" ? undefined : m.detailHref } : m));
 
   return json({
     totals: {

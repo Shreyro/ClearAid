@@ -19,7 +19,7 @@ export function InsightsCard({ fundId }: { fundId: string }) {
     }
   }
   return (
-    <section className="card p-5 bg-gradient-to-br from-[#f2faf8] to-surface">
+    <section className="card p-5 bg-gradient-to-br from-brand-soft to-surface">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-brand" /> Crisis insights
@@ -31,7 +31,7 @@ export function InsightsCard({ fundId }: { fundId: string }) {
           </button>
         </div>
       </div>
-      {!data && !error && <div className="mt-4 space-y-2"><div className="h-5 w-2/3 bg-[#eceae4] rounded animate-pulse" /><div className="h-4 w-full bg-[#eceae4] rounded animate-pulse" /><div className="h-4 w-5/6 bg-[#eceae4] rounded animate-pulse" /></div>}
+      {!data && !error && <div className="mt-4 space-y-2"><div className="h-5 w-2/3 bg-track rounded animate-pulse" /><div className="h-4 w-full bg-track rounded animate-pulse" /><div className="h-4 w-5/6 bg-track rounded animate-pulse" /></div>}
       {error && <p className="text-sm text-critical mt-3">{error}</p>}
       {data && (
         <div className={busy ? "opacity-60" : ""}>
@@ -48,8 +48,8 @@ export function InsightsCard({ fundId }: { fundId: string }) {
             </div>
           </div>
           {data.risks.length > 0 && (
-            <div className="mt-4 rounded-lg bg-[#fff8e6] px-3 py-2 text-sm">
-              <div className="text-xs font-semibold text-[#7a5200] flex items-center gap-1 mb-1"><AlertTriangle className="h-3.5 w-3.5" /> Integrity notes</div>
+            <div className="mt-4 rounded-lg bg-warn-soft px-3 py-2 text-sm">
+              <div className="text-xs font-semibold text-warn-ink flex items-center gap-1 mb-1"><AlertTriangle className="h-3.5 w-3.5" /> Integrity notes</div>
               <ul className="list-disc pl-4 space-y-0.5">{data.risks.map((r) => <li key={r}>{r}</li>)}</ul>
             </div>
           )}

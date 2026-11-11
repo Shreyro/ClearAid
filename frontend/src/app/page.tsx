@@ -50,16 +50,19 @@ export default function MoneyFlowPage() {
     <Page
       wide
       title="Money flow"
-      subtitle={`Where money came from, which fund it went to, and where it went next${me.role === "admin" ? " across all of your NGO's funds" : " for the funds you have access to"}.`}
+      subtitle={`Where money came from, which fund it went to, and where it went next${me.role === "admin" || me.role === "donor" ? ` across all of ${me.ngoName}'s funds` : " for the funds you have access to"}.`}
     >
       <div className={clsx("grid grid-cols-2 gap-4", t.returned > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
         <div className="card p-4"><Stat label="Money in" value={usd(t.received, true)} sub="donations, grants and bank receipts" /></div>
         <div className="card p-4"><Stat label="Money out" value={usd(t.spent, true)} sub="paid to suppliers and vendors" /></div>
         {t.returned > 0 && <div className="card p-4"><Stat label="Returned" value={usd(t.returned, true)} sub="refunds and carry-forwards" /></div>}
         <div className="card p-4"><Stat label="Still held" value={usd(t.balance, true)} sub={`across ${data.funds.length} fund${data.funds.length > 1 ? "s" : ""}`} /></div>
-        <Link href="/untagged" className={clsx("card p-4 hover:border-brand", u.count > 0 && "border-[#f3d48a] bg-[#fffaf0]")}>
-          <Stat label="Not yet traced" value={String(u.count)} sub={u.count ? `${usd(u.in)} in · ${usd(u.out)} out without a tracking code` : "every bank line is tagged to a fund"} />
-        </Link>
+        {(() => {
+          const stat = <Stat label="Not yet traced" value={String(u.count)} sub={u.count ? `${usd(u.in)} in · ${usd(u.out)} out without a tracking code` : "every bank line is tagged to a fund"} />;
+          const cls = clsx("card p-4", u.count > 0 && "border-warn-line bg-warn-soft");
+          // Donors can't open the tagging queue, so the card is just a figure for them.
+          return me.role === "donor" ? <div className={cls}>{stat}</div> : <Link href="/untagged" className={clsx(cls, "hover:border-brand")}>{stat}</Link>;
+        })()}
       </div>
 
       <Section
@@ -75,7 +78,7 @@ export default function MoneyFlowPage() {
           </div>
         }
       >
-        <div className="flex justify-between text-[11px] uppercase tracking-wide font-semibold text-muted mb-2 px-1">
+        <div className="flex justify-between text-xs uppercase tracking-wide font-semibold text-muted mb-2 px-1">
           <span>Came from</span><span>Fund</span><span>Went to</span>
         </div>
         <Sankey graph={data.flow[view]} onFundClick={(slug) => router.push(`/funds/${slug}`)} ariaLabel={`Money flow: ${usd(t.received)} in, ${usd(t.spent)} out, ${usd(t.balance)} still held`} />
@@ -128,7 +131,7 @@ export default function MoneyFlowPage() {
           <Section title="Latest movements" action={<Link href="/transactions" className="text-xs text-ink-2 hover:text-ink">Transactions →</Link>}>
             <MovementList rows={data.recent} />
           </Section>
-          <div className={clsx("card p-4 flex gap-3 text-sm", !intact && "border-[#f0c4c4]")}>
+          <div className={clsx("card p-4 flex gap-3 text-sm", !intact && "border-bad-line")}>
             {intact ? <CheckCircle2 className="h-5 w-5 text-good shrink-0" /> : <AlertTriangle className="h-5 w-5 text-critical shrink-0" />}
             <div>
               <div className="font-medium">{intact ? "Records are intact" : "A record has been altered"}</div>
@@ -136,7 +139,7 @@ export default function MoneyFlowPage() {
                 {intact
                   ? `${data.integrity.ledgers} fund ledgers and ${data.integrity.auditEntries} audit-log entries pass their SHA-256 hash-chain checks.`
                   : [data.integrity.brokenLedgers.length ? `Ledger chain broken on ${data.integrity.brokenLedgers.join(", ")}.` : "", data.integrity.auditValid ? "" : "The audit-log chain is broken."].join(" ")}
-                {" "}<Link href="/audit" className="underline">Audit log</Link>
+                {me.role !== "donor" && <>{" "}<Link href="/audit" className="underline">Audit log</Link></>}
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { AI_ACTOR, audit, SYSTEM_ACTOR, type AuditInput } from "./audit";
 import { fmt } from "./money";
-import type { DB } from "./types";
+import { type DB, roleLabel } from "./types";
 
 /**
  * Build a believable audit history for the demo from the seeded data, so the
@@ -24,7 +24,7 @@ export function seedAuditLog(db: DB, now: number) {
       action: "member.created",
       targetId: m.id,
       ts: iso(Date.parse(m.createdAt) + i * 60_000),
-      summary: m.id === admin.id ? `Created the first admin login "${m.username}" for ${m.name}` : `Created ${m.role === "admin" ? "admin" : "staff"} login "${m.username}" for ${m.name}`,
+      summary: m.id === admin.id ? `Created the first admin login "${m.username}" for ${m.name}` : `Created ${roleLabel(m.role)} login "${m.username}" for ${m.name}`,
       meta: { role: m.role, username: m.username },
     });
   }

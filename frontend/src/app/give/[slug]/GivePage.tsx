@@ -187,14 +187,14 @@ export function GivePage({ slug }: { slug: string }) {
                 <div className={clsx(!valid && "pointer-events-none opacity-50")}>
                   {sdkError ? <p className="text-sm text-critical">{sdkError}</p> : !sdk && <div className="h-12 grid place-items-center"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>}
                   <div ref={box} />
-                  {data.paypal.env !== "live" && <p className="text-[11px] text-muted mt-1">PayPal sandbox: use a sandbox personal account to pay. No real money moves.</p>}
+                  {data.paypal.env !== "live" && <p className="text-xs text-muted mt-1">PayPal sandbox: use a sandbox personal account to pay. No real money moves.</p>}
                 </div>
               ) : (
                 <div>
                   <button className="btn btn-primary w-full justify-center !py-3" disabled={!valid || busy} onClick={simulate}>
                     {busy && <Loader2 className="h-4 w-4 animate-spin" />} Donate {valid ? usd(cents) : ""} (simulated PayPal)
                   </button>
-                  <p className="text-[11px] text-muted mt-1">PayPal keys aren&apos;t set on this server, so the payment is simulated and marked as such on the ledger.</p>
+                  <p className="text-xs text-muted mt-1">PayPal keys aren&apos;t set on this server, so the payment is simulated and marked as such on the ledger.</p>
                 </div>
               )}
               {err && <p className="text-sm text-critical" role="alert">{err}</p>}
@@ -202,7 +202,7 @@ export function GivePage({ slug }: { slug: string }) {
           )}
         </div>
         {fund.code && (
-          <div className="border-t border-line bg-[#fafaf7] px-6 sm:px-8 py-4 text-sm text-ink-2 flex items-start gap-2">
+          <div className="border-t border-line bg-sunken px-6 sm:px-8 py-4 text-sm text-ink-2 flex items-start gap-2">
             <Landmark className="h-4 w-4 mt-0.5 shrink-0" />
             <span>Paying by bank transfer instead? Put <span className="font-mono font-semibold text-ink">#{fund.code}</span> in the payment reference so it&apos;s matched to this fund automatically.</span>
           </div>

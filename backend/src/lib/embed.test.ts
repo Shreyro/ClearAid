@@ -13,12 +13,13 @@ process.env.SESSION_SECRET = "test-secret";
 after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
 
 const { buildSeed } = await import("./seed");
-const { buildEmbedPayload, cleanPublish, DEFAULT_PUBLISH, embedsOf, publicEmbedPayload, publishedBlocks } = await import("./embed");
+const { ALL_FUNDS, payloadFor, buildEmbedPayload, cleanPublish, DEFAULT_PUBLISH, embedsOf, publicEmbedPayload, publishedBlocks } = await import("./embed");
 const { fundStats } = await import("./funds");
 const { postAllocations } = await import("./banking");
 
-const OFF: EmbedPublish = { totals: false, sources: false, categories: false, payees: "off", flow: false, timeline: false, activity: 0, integrity: false };
-const EVERYTHING: EmbedPublish = { totals: true, sources: true, categories: true, payees: "all", flow: true, timeline: true, activity: 25, integrity: true };
+const OFF: EmbedPublish = { totals: false, sources: false, categories: false, payees: "off", flow: false, timeline: false, activity: 0, integrity: false, funds: false };
+const EVERYTHING: EmbedPublish = { totals: true, sources: true, categories: true, payees: "all", flow: true, timeline: true, activity: 25, integrity: true, funds: true };
+const allOf = (p: EmbedPublish) => payloadFor(db, asha.ngoId, { fundId: ALL_FUNDS }, p)!;
 const sum = (rows: { amount: number }[] | undefined) => (rows ?? []).reduce((a, r) => a + r.amount, 0);
 
 const db = buildSeed(7);
@@ -103,6 +104,10 @@ test("nothing internal is published, whatever is switched on", () => {
     // Times are cut to the day.
     assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*\d{4}-\d{2}-\d{2}T/.test(text), "only asOf may carry a time");
   }
+  // The all-funds embed is held to the same rules.
+  const all = JSON.stringify(allOf(EVERYTHING));
+  for (const x of secrets) assert.ok(!all.includes(x), `"${x}" was published in the all-funds embed`);
+  assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*\d{4}-\d{2}-\d{2}T/.test(all), "only asOf may carry a time");
 });
 
 test("with registered payees only, a bank line's own wording is never shown", () => {
@@ -178,7 +183,8 @@ test("only a live embed answers to its key", () => {
   embedsOf(copy).push(embed);
 
   const live = publicEmbedPayload(copy, embed.key);
-  assert.deepEqual(Object.keys(live!.payload).sort(), ["asOf", "fund", "ngo", "totals"]);
+  assert.deepEqual(Object.keys(live!.payload).sort(), ["asOf", "fund", "ngo", "theme", "totals"]);
+  assert.equal(live!.payload.theme, "light", "older embeds are light");
   assert.equal(publicEmbedPayload(copy, "nope"), null);
   assert.equal(publicEmbedPayload(copy, embed.id), null, "the internal id is not a key");
 
@@ -187,4 +193,51 @@ test("only a live embed answers to its key", () => {
   embed.enabled = true;
   embed.ngoId = "ngo_other";
   assert.equal(publicEmbedPayload(copy, embed.key), null, "a fund of another NGO");
+});
+
+test("an all-funds embed adds every fund together and can list each fund", () => {
+  const funds = db.funds.filter((f) => f.ngoId === asha.ngoId);
+  const p = allOf(EVERYTHING);
+  assert.equal(p.scope, "combined");
+  const total = (k: "raised" | "spent" | "balance") => funds.reduce((a, f) => a + fundStats(db, f)[k], 0);
+  assert.equal(p.totals!.in, total("raised"));
+  assert.equal(p.totals!.out, total("spent"));
+  assert.equal(p.totals!.held, total("balance"));
+  assert.deepEqual(p.funds!.map((f) => f.title).sort(), funds.map((f) => f.title).sort());
+  assert.equal(sum(p.funds!.map((f) => ({ amount: f.in }))), p.totals!.in);
+  // Spending by category across funds equals what went out (bank fees included).
+  assert.equal(sum(p.categories), p.totals!.out);
+  // One box per fund in the diagram, none named by internal id.
+  const fundNodes = p.flow!.nodes.filter((n) => n.kind === "fund");
+  assert.ok(fundNodes.length >= 2 && fundNodes.every((n) => /^fund:\d+$/.test(n.id)));
+  assert.ok(p.activity!.every((m) => m.fund && funds.some((f) => f.title === m.fund)));
+  assert.equal(p.integrity!.ledgers, funds.length);
+  // A single-fund embed never carries the per-fund list, even if asked.
+  assert.equal(buildEmbedPayload(db, asha, EVERYTHING).funds, undefined);
+});
+
+test("an all-funds embed answers to its key and follows new funds", () => {
+  const copy = structuredClone(db);
+  const embed: PublicEmbed = { id: "emb_all", key: "a".repeat(22), ngoId: asha.ngoId, fundId: ALL_FUNDS, name: "Home", publish: { ...OFF, totals: true, funds: true }, enabled: true, createdAt: "", createdBy: "", createdByName: "", updatedAt: "", updatedByName: "" };
+  embedsOf(copy).push(embed);
+  const before = publicEmbedPayload(copy, embed.key)!.payload.funds!.length;
+  copy.funds.push({ ...structuredClone(copy.funds[0]), id: "fund_new", slug: "new", title: "Brand new appeal" });
+  assert.equal(publicEmbedPayload(copy, embed.key)!.payload.funds!.length, before + 1);
+  embed.ngoId = "ngo_other";
+  assert.equal(publicEmbedPayload(copy, embed.key), null, "another NGO with no funds");
+});
+
+test("ticking some funds publishes just those, added together", () => {
+  const [a, b, c] = db.funds.filter((f) => f.ngoId === asha.ngoId);
+  const two = payloadFor(db, asha.ngoId, { fundId: a.id, fundIds: [a.id, b.id] }, EVERYTHING)!;
+  assert.equal(two.scope, "combined");
+  assert.deepEqual(two.funds!.map((f) => f.title).sort(), [a.title, b.title].sort());
+  assert.ok(!JSON.stringify(two).includes(c.title), "an unticked fund isn't mentioned");
+  assert.equal(two.totals!.in, fundStats(db, a).raised + fundStats(db, b).raised);
+  // One ticked fund is an ordinary single-fund embed.
+  const one = payloadFor(db, asha.ngoId, { fundId: a.id, fundIds: [a.id] }, EVERYTHING)!;
+  assert.equal(one.scope, undefined);
+  assert.equal(one.fund.title, a.title);
+  // Another NGO's fund can't be slipped in.
+  assert.equal(payloadFor(db, "ngo_other", { fundId: a.id, fundIds: [a.id, b.id] }, EVERYTHING), null);
 });

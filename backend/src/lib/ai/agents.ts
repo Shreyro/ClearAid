@@ -7,9 +7,10 @@ import { donationAvailable, donorLabel, findFund, payWithdrawal, requiredApprova
 import { publish } from "../events";
 import { fmt, toCents } from "../money";
 import { listRecentTransactions, refundCapture } from "../paypal";
+import { captureConn, connOf, defaultAccount } from "../paypal-accounts";
 import { activeAssignees, HttpError, isAssigned } from "../session";
 import { audit } from "../audit";
-import type { Fund, Withdrawal } from "../types";
+import type { Fund, MemberRole, Withdrawal } from "../types";
 import { agentTurn, type AgentTool, type AgentTurn } from "./agent";
 import { fundOverview, readTools, trackerTools } from "./tools";
 
@@ -19,7 +20,7 @@ const DONOR_SYSTEM = `You are "Ask ClearAid", the assistant on a public disaster
 
 Answer only from tool results; if the data does not say, say so. Lead with the direct answer and the numbers, then the evidence. Mention withdrawal IDs (like wd_ab12cd34ef56) when you refer to specific payments so the reader can click through. Explain audit checks in plain language when relevant.
 
-All records you see are already PII-redacted; never speculate about the identity of beneficiaries. You cannot move money. If a donor asks for a refund, explain that leftover funds are returned or carried forward according to their choice when a fund closes (on their "My impact" page). Keep answers under 180 words and use short paragraphs or bullets.`;
+All records you see are already PII-redacted; never speculate about the identity of beneficiaries. You cannot move money. If someone asks what happens to money left over, explain that when a fund closes an admin decides how much moves to other open funds; anything not moved stays in the bank and stays tracked on the closed fund. Keep answers under 180 words and use short paragraphs or bullets.`;
 
 export async function askClearAid(args: { owner: string; fundId: string; donorId?: string; message: string; conversationId?: string }): Promise<AgentTurn> {
   if (!aiEnabled()) {
@@ -154,7 +155,7 @@ function paypalTools(by: { id: string; name: string }): AgentTool[] {
                   function: { name, arguments: JSON.stringify({ ...input, amount: { currency_code: "USD", value: (amt / 100).toFixed(2) } }) },
                 }).then((m) => String(m.content)),
               )
-            : await refundCapture(cap.id, amt, String(input.note_to_payer ?? "Refund from ClearAid"));
+            : await refundCapture(captureConn(getDb(), cap), cap.id, amt, String(input.note_to_payer ?? "Refund from ClearAid"));
           if (!r?.id) throw new Error(`PayPal did not confirm the refund: ${JSON.stringify(r).slice(0, 300)}`);
           recordRefund(cap.id, amt, r.id, by);
           return { ...r, recordedOnPublicLedger: true, amount: fmt(amt) };
@@ -178,7 +179,7 @@ function clearAidOpsTools(): AgentTool[] {
         const db = getDb();
         const since = Date.now() - 31 * 86400_000;
         const ours = db.captures.filter((c) => Date.parse(c.createdAt) >= since);
-        const live = await listRecentTransactions(31).catch((e) => ({ error: (e as Error).message }));
+        const live = await listRecentTransactions(connOf(defaultAccount(db.ngos[0]?.id ?? "")), 31).catch((e) => ({ error: (e as Error).message }));
         if (!live || "error" in live) {
           return {
             mode: live ? "live (error)" : "simulated",
@@ -226,7 +227,7 @@ function assignedTitles(memberId: string) {
     .join(", ");
 }
 
-export async function ngoCopilot(args: { admin: { id: string; name: string; role: "admin" | "user"; ngoId: string }; message?: string; conversationId?: string; confirm?: boolean }): Promise<AgentTurn> {
+export async function ngoCopilot(args: { admin: { id: string; name: string; role: MemberRole; ngoId: string }; message?: string; conversationId?: string; confirm?: boolean }): Promise<AgentTurn> {
   if (!aiEnabled()) {
     return { conversationId: "offline", trace: [], reply: "Copilot needs an Anthropic API key (ANTHROPIC_API_KEY). Everything it reads is also on the Money flow, Transactions and Untagged pages." };
   }

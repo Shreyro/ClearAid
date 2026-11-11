@@ -1,11 +1,16 @@
 import { bankParty } from "./flow";
+import { DEFAULT_PAYPAL, paypalAccountsOf } from "./paypal-accounts";
 import type { DB, LedgerEntry } from "./types";
+
+/** "paypal:<id>" or "bank:<id>": which connected account a movement went through, for filtering. */
+export type AccountRef = { key: string; name: string; kind: "paypal" | "bank" };
 
 export const TYPE_LABEL: Record<string, string> = {
   fund_opened: "Fund opened",
   donation: "Incoming funds",
   bank_in: "Bank receipt",
   bank_out: "Bank payment",
+  expense: "Declared payment",
   withdrawal: "Vendor payout",
   withdrawal_rejected: "Request rejected",
   refund: "Refund",
@@ -25,6 +30,7 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
   let counterpartyEmail: string | undefined;
   let via: string | undefined;
   let detailHref: string | undefined;
+  let account: AccountRef | undefined;
   if (e.type === "donation") {
     const d = db.donations.find((x) => x.id === e.ref);
     const donor = d && db.donors.find((x) => x.id === d.donorId);
@@ -32,7 +38,14 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
       counterparty = donor.name;
       counterpartyEmail = donor.email.endsWith("@donor.local") ? undefined : donor.email;
     }
-    via = e.paypalRef?.startsWith("MANUAL-") ? "Recorded by staff" : "PayPal";
+    if (e.paypalRef?.startsWith("MANUAL-")) via = "Recorded by staff";
+    else {
+      const cap = db.captures.find((c) => c.id === e.paypalRef);
+      const fund = db.funds.find((f) => f.id === e.fundId);
+      const acc = fund && paypalAccountsOf(db, fund.ngoId).find((a) => a.id === (cap?.accountId ?? DEFAULT_PAYPAL));
+      via = acc ? `PayPal · ${acc.name}` : "PayPal";
+      if (acc) account = { key: `paypal:${acc.id}`, name: acc.name, kind: "paypal" };
+    }
   } else if (e.type === "carry_forward_in") {
     counterparty = `Fund: ${e.memo.match(/from "(.+)"/)?.[1] ?? "another fund"}`;
     via = "Carry forward";
@@ -56,14 +69,22 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
       detailHref = `/untagged?status=all&q=${t.id}`;
     }
     via = acc ? `${acc.provider === "plaid" ? "Bank feed" : "Bank statement"} · ${acc.name}` : "Bank";
+    if (acc) account = { key: `bank:${acc.id}`, name: acc.name, kind: "bank" };
   } else if (e.type === "refund") {
     via = "PayPal refund";
+  } else if (e.type === "expense") {
+    const p = db.payments?.find((x) => x.id === e.ref);
+    if (p) {
+      const how = { bank_transfer: "Bank transfer", card: "Card", cheque: "Cheque", cash: "Cash", other: "Other" }[p.method];
+      via = `${how} · ${p.status === "matched" ? "bank line matched" : p.status === "awaiting_bank" ? "waiting for bank line" : p.status === "void" ? "voided" : "no bank line"}`;
+      if (p.receipt) detailHref = `/api/files/${p.receipt.fileId}`;
+    }
   }
 
   const direction: "in" | "out" | "notice" = e.amount > 0 ? "in" : e.amount < 0 ? "out" : "notice";
   // A retag reverses an earlier bank entry: the money flows the opposite way to its type.
-  const reversal = (e.type === "bank_in" && e.amount < 0) || (e.type === "bank_out" && e.amount > 0);
-  const other = reversal ? `${counterparty} (retag reversal)` : counterparty;
+  const reversal = (e.type === "bank_in" && e.amount < 0) || (e.type === "bank_out" && e.amount > 0) || (e.type === "expense" && e.amount > 0);
+  const other = reversal ? `${counterparty} (${e.type === "expense" ? "voided" : "retag reversal"})` : counterparty;
   const from = direction === "in" ? other : direction === "out" ? fundTitle : "";
   const to = direction === "in" ? fundTitle : direction === "out" ? other : "";
 
@@ -74,7 +95,7 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
     fundTitle,
     ts: e.ts,
     type: e.type,
-    typeLabel: reversal ? "Retag reversal" : (TYPE_LABEL[e.type] ?? e.type),
+    typeLabel: reversal ? (e.type === "expense" ? "Voided payment" : "Retag reversal") : (TYPE_LABEL[e.type] ?? e.type),
     direction,
     amount: e.amount,
     from,
@@ -82,6 +103,7 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
     counterparty,
     counterpartyEmail,
     via,
+    account,
     memo: e.memo,
     ref: e.ref,
     detailHref,

@@ -8,7 +8,8 @@
   --surface-2: #fcfcfb;
   --ink: #0b0b0b;
   --ink-2: #52514e;
-  --muted: #898781;
+  /* 5.2:1 on white, 4.8:1 on the page (was #898781 at 3.6:1, under the 4.5:1 text minimum) */
+  --muted: #6f6d67;
   --line: #e7e6e0;
   --line-strong: #c3c2b7;
   --brand: #0f766e;
@@ -23,6 +24,35 @@
   --critical: #d03b3b;
   --paypal: #003087;
   --paypal-gold: #ffc439;
+
+  /* State colours: one name per job, so components never hard-code a shade. Each *-ink is 4.5:1+ on its wash. */
+  --warn-ink: #7a5200;
+  --warn-icon: #c98a00;
+  --warn-wash: #fff4d6;
+  --warn-soft: #fffaf0;
+  --warn-line: #f3d48a;
+  --bad-ink: #9b2424;
+  --bad-wash: #fbe9e9;
+  --bad-soft: #fdf2f2;
+  --bad-line: #f0c4c4;
+  --good-wash: #e7f6e7;
+  --good-soft: #f3faf3;
+  --good-line: #cfe9cf;
+  --info-ink: #1c4f8f;
+  --info-wash: #e8f1fc;
+  --ai-ink: #5b3d99;
+  --ai-wash: #f1ecfb;
+  --out-ink: #9b3d17; /* money leaving a fund */
+  --brand-line: #bfe3dc;
+  --brand-soft: #f2faf8;
+  --brand-deep: #0f5f56;
+
+  /* Neutral surfaces */
+  --hover: #efeee9;
+  --hover-soft: #f4f3ef;
+  --sunken: #fafaf7;
+  --sidebar: #f9f9f6;
+  --track: #eceae4;
 }
 
 @theme inline {
@@ -45,8 +75,34 @@
   --color-serious: var(--serious);
   --color-critical: var(--critical);
   --color-paypal: var(--paypal);
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-warn-ink: var(--warn-ink);
+  --color-warn-icon: var(--warn-icon);
+  --color-warn-wash: var(--warn-wash);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+  --color-bad-ink: var(--bad-ink);
+  --color-bad-wash: var(--bad-wash);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-line: var(--bad-line);
+  --color-good-wash: var(--good-wash);
+  --color-good-soft: var(--good-soft);
+  --color-good-line: var(--good-line);
+  --color-info-ink: var(--info-ink);
+  --color-info-wash: var(--info-wash);
+  --color-ai-ink: var(--ai-ink);
+  --color-ai-wash: var(--ai-wash);
+  --color-out-ink: var(--out-ink);
+  --color-brand-line: var(--brand-line);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-deep: var(--brand-deep);
+  --color-hover: var(--hover);
+  --color-hover-soft: var(--hover-soft);
+  --color-sunken: var(--sunken);
+  --color-sidebar: var(--sidebar);
+  --color-track: var(--track);
+  /* IBM Plex (loaded in app/layout.tsx with next/font): built for financial and data UI, with true tabular figures */
+  --font-sans: var(--font-plex), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html,
@@ -58,6 +114,56 @@ body {
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Embed colours. An admin picks light (the tokens above), dark, or "auto"
+ * (follow the visitor's device). Only the embed is restyled: the tokens are
+ * redefined on its wrapper, so the rest of the app stays light.
+ */
+.embed-theme-dark {
+  color-scheme: dark;
+  --page: #121413;
+  --surface: #1b1d1c;
+  --surface-2: #212423;
+  --ink: #f1f0eb;
+  --ink-2: #c3c1ba;
+  --muted: #95938c;
+  --line: #2e3130;
+  --line-strong: #4a4d4a;
+  --brand: #2db3a3;
+  --brand-ink: #86dbd0;
+  --brand-wash: #133430;
+  --series-1: #62a2f2;
+  --series-2: #f28a5c;
+  --good: #47d062;
+  --good-ink: #86e393;
+  --critical: #f17070;
+  --grid: #282b2a;
+  --pill-neutral: #2b2e2c;
+}
+@media (prefers-color-scheme: dark) {
+  .embed-theme-auto {
+  color-scheme: dark;
+  --page: #121413;
+  --surface: #1b1d1c;
+  --surface-2: #212423;
+  --ink: #f1f0eb;
+  --ink-2: #c3c1ba;
+  --muted: #95938c;
+  --line: #2e3130;
+  --line-strong: #4a4d4a;
+  --brand: #2db3a3;
+  --brand-ink: #86dbd0;
+  --brand-wash: #133430;
+  --series-1: #62a2f2;
+  --series-2: #f28a5c;
+  --good: #47d062;
+  --good-ink: #86e393;
+  --critical: #f17070;
+  --grid: #282b2a;
+  --pill-neutral: #2b2e2c;
+  }
 }
 
 /* Embeds (/embed/<key>) sit inside someone else's page: let that page's background show around the card. */
@@ -85,8 +191,12 @@ html:has(.embed-root) body {
   padding: 0.55rem 0.95rem;
   font-weight: 600;
   font-size: 0.875rem;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  min-height: 2rem;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s;
   cursor: pointer;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -108,12 +218,12 @@ html:has(.embed-root) body {
   border-color: var(--line-strong);
 }
 .btn-danger {
-  background: #fff;
-  border: 1px solid #f1c4c4;
-  color: #a12a2a;
+  background: var(--surface);
+  border: 1px solid var(--bad-line);
+  color: var(--bad-ink);
 }
 .btn-danger:hover:not(:disabled) {
-  background: #fdf2f2;
+  background: var(--bad-soft);
 }
 
 .input {
@@ -139,7 +249,7 @@ html:has(.embed-root) body {
 
 @keyframes flash-in {
   from {
-    background: #fff7d6;
+    background: var(--warn-wash);
   }
   to {
     background: transparent;
@@ -160,4 +270,36 @@ html:has(.embed-root) body {
 }
 .live-dot {
   animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+/* Keyboard focus: one visible ring everywhere (text fields keep their own border and halo). */
+:where(a, button, summary, select, [role="button"], [role="tab"], [role="radio"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+:where(input[type="checkbox"], input[type="radio"]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Touch screens: every control at least 44px tall, so it can be hit with a finger. */
+@media (pointer: coarse) {
+  .btn,
+  .input,
+  select.input {
+    min-height: 44px;
+  }
+}
+
+/* Respect "reduce motion": loaders, pulses and flashes stop; nothing slides. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

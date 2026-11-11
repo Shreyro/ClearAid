@@ -1,4 +1,4 @@
-import { config, paypalLive } from "@/lib/config";
+import { fundConn } from "@/lib/paypal-accounts";
 import { type Ctx, handle, json } from "@/lib/http";
 import { givableFund, MAX_GIFT, MIN_GIFT } from "../shared";
 
@@ -8,11 +8,13 @@ import { givableFund, MAX_GIFT, MIN_GIFT } from "../shared";
  */
 export const GET = handle(async (_req: Request, ctx: Ctx<{ slug: string }>) => {
   const { slug } = await ctx.params;
-  const { fund, ngo, code } = givableFund(slug);
+  const { db, fund, ngo, code } = givableFund(slug);
+  // The fund's own PayPal account: donations go there. Only its public client ID is sent.
+  const pp = fundConn(db, fund);
   return json({
     fund: { slug: fund.slug, title: fund.title, region: fund.region, description: fund.description, accent: fund.accent, open: fund.status === "active", code },
     ngo: { name: ngo?.name ?? "", country: ngo?.country ?? "" },
-    paypal: { live: paypalLive(), env: config.paypal.env, clientId: paypalLive() ? config.paypal.clientId : null },
+    paypal: { live: pp.live, env: pp.env, clientId: pp.live ? pp.clientId : null },
     limits: { min: MIN_GIFT, max: MAX_GIFT },
   });
 });

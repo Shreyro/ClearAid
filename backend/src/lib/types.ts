@@ -21,9 +21,16 @@ export const CATEGORIES: { id: Category; label: string }[] = [
 
 export const categoryLabel = (c: Category) => CATEGORIES.find((x) => x.id === c)?.label ?? c;
 
-export type MemberRole = "admin" | "user";
+export type MemberRole = "admin" | "user" | "donor";
 
-/** An NGO staff login. Admins manage people, funds and vendors; users work on the funds they're assigned to. */
+/** How a role is named in the UI and the audit log. */
+export const roleLabel = (r: MemberRole) => (r === "admin" ? "admin" : r === "donor" ? "donor (read-only)" : "staff");
+
+/**
+ * A login on the NGO's account. Admins manage people, funds and vendors; users
+ * work on the funds they're assigned to; donors can only look at where the money
+ * went (every fund, redacted views, no settings, no changes).
+ */
 export interface NgoMember {
   id: string;
   name: string;
@@ -97,7 +104,7 @@ export interface FundPolicy {
   /** Low-risk withdrawals at or below this amount are auto-approved by the AI fast lane. 0 disables. */
   fastLaneMax: number;
   fastLaneMaxRisk: number;
-  /** What happens to a donor's leftover share if they make no choice when the fund closes. */
+  /** No longer used: an admin decides where leftover money goes when the fund closes. Kept so older data still loads. */
   leftoverDefault: "refund" | "carry_forward";
 }
 
@@ -133,6 +140,8 @@ export interface Fund {
   vendorIds: string[];
   /** NGO members who may sign this fund's withdrawals. */
   assignees: string[];
+  /** Donor logins an admin has allowed to see this fund (read-only). Missing on older data: nobody. */
+  viewers?: string[];
   /**
    * Tracking codes (without "#", upper-case, e.g. ["RO1", "ASHA"]). A bank
    * transaction whose description contains "#RO1" or "#ASHA-MED" is tagged to
@@ -140,6 +149,8 @@ export interface Fund {
    */
   trackingCodes: string[];
   carryForwardFundId?: string;
+  /** PayPal account this fund's donation link pays into (missing: the default account). */
+  paypalAccountId?: string;
   closingStartedAt?: string;
   closedAt?: string;
   accent: string;
@@ -160,6 +171,8 @@ export interface Donor {
 export interface Capture {
   id: string;
   orderId: string;
+  /** The PayPal account the money landed in (missing on older data: the server's default account). */
+  accountId?: string;
   donorId: string;
   amount: number;
   refunded: number;
@@ -208,6 +221,8 @@ export interface StoredFile {
   /** Public files can be shown on the fund page; private ones only to the NGO. */
   public: boolean;
   createdAt: string;
+  /** What Claude read off a receipt uploaded to declare a payment (kept so the audit can say what was changed). */
+  scan?: { engine: "claude" | "none"; extraction?: BankReceipt["extraction"]; note?: string; ngoId: string };
 }
 
 export type CheckStatus = "pass" | "warn" | "fail";
@@ -300,6 +315,8 @@ export type LedgerType =
   | "donation"
   | "bank_in"
   | "bank_out"
+  /** A payment staff declared by hand (with its receipt), e.g. cash or before the bank line arrives. */
+  | "expense"
   | "withdrawal"
   | "withdrawal_rejected"
   | "refund"
@@ -327,6 +344,8 @@ export interface LedgerEntry {
 export interface PendingOrder {
   orderId: string;
   fundId: string;
+  /** PayPal account the order was created on; the capture must use the same one. */
+  accountId?: string;
   amount: number;
   donorName?: string;
   donorEmail?: string;
@@ -351,8 +370,12 @@ export interface DB {
   assignmentRequests: AssignmentRequest[];
   auditLog: AuditEntry[];
   bankAccounts: BankAccount[];
+  /** PayPal business accounts an admin connected (the server's own PAYPAL_* account is added at runtime, not stored). */
+  paypalAccounts?: PayPalAccount[];
   statementImports: StatementImport[];
   bankTxns: BankTxn[];
+  /** Payments declared by hand. Missing on data saved before they existed; read through `paymentsOf`. */
+  payments?: DeclaredPayment[];
   /** Public embeds. Missing on data saved before they existed; read through `embedsOf`. */
   embeds?: PublicEmbed[];
 }
@@ -384,15 +407,28 @@ export interface EmbedPublish {
   activity: 0 | 5 | 10 | 25;
   /** Proof line: number of ledger entries, whether the hash chain verifies, and its head hash. */
   integrity: boolean;
+  /** Embeds of two or more funds only: each fund's own totals (in, out, still held). */
+  funds: boolean;
 }
 
 /** A read-only widget for one fund that any website can show in an iframe. */
+export type EmbedTheme = "light" | "dark" | "auto";
+
 export interface PublicEmbed {
   id: string;
   /** Unguessable key in the public URL (/embed/<key>). */
   key: string;
   ngoId: string;
+  /**
+   * What it publishes: "all" (ALL_FUNDS) for every fund of the NGO, including
+   * ones added later; otherwise the first of `fundIds` (or the only fund, on
+   * embeds made before several could be chosen).
+   */
   fundId: string;
+  /** The funds it publishes together, when an admin ticked specific ones. */
+  fundIds?: string[];
+  /** Colours: light (default), dark, or follow the visitor's device setting. */
+  theme?: EmbedTheme;
   /** Internal label, e.g. "Website home page". Not shown publicly. */
   name: string;
   publish: EmbedPublish;
@@ -419,6 +455,26 @@ export interface CsvMapping {
   counterparty?: string;
   type?: string;
   dateFormat: "ymd" | "dmy" | "mdy";
+}
+
+export interface PayPalAccount {
+  id: string;
+  ngoId: string;
+  /** What staff call it, e.g. "Appeals account". */
+  name: string;
+  /** The PayPal login the account belongs to, shown so staff can tell accounts apart. */
+  email?: string;
+  env: "sandbox" | "live";
+  /** "simulated" accounts move no money: for demos and trying ClearAid without PayPal keys. */
+  mode: "live" | "simulated";
+  clientId?: string;
+  /** AES-256-GCM encrypted REST app secret. Never sent to the browser. */
+  clientSecretEnc?: string;
+  /** Webhook ID from the PayPal app, to verify webhooks sent to /api/paypal/webhook?account=<id>. */
+  webhookId?: string;
+  status: "active" | "disconnected";
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface BankAccount {
@@ -475,7 +531,8 @@ export interface BankAllocation {
   code?: string;
 }
 
-export type BankTxnStatus = "auto_tagged" | "tagged" | "untagged" | "fee_unallocated";
+/** "matched": the line is the bank side of a payment staff already declared, so it isn't posted again. */
+export type BankTxnStatus = "auto_tagged" | "tagged" | "untagged" | "fee_unallocated" | "matched";
 
 export interface BankTxn {
   id: string;
@@ -511,6 +568,8 @@ export interface BankTxn {
   pending?: PendingTag;
   /** Receipts and invoices attached as evidence. They never change the tag. */
   receipts?: BankReceipt[];
+  /** The declared payment this line was matched to (status "matched"). */
+  paymentId?: string;
   /** Previous allocations, newest last, kept when a transaction is retagged. */
   history: { allocations: BankAllocation[]; by: string; at: string; reason?: string; approvedBy?: string }[];
   createdAt: string;
@@ -575,13 +634,23 @@ export type AuditAction =
   | "fund.created"
   | "fund.closing_started"
   | "fund.closed"
+  | "fund.leftover_moved"
   | "vendor.created"
   | "vendor.verified"
   | "transaction.recorded"
+  | "member.donor_funds_changed"
+  | "payment.recorded"
+  | "payment.matched"
+  | "payment.unlinked"
+  | "payment.voided"
   | "refund.issued"
   | "export.transactions"
   | "export.audit"
   | "demo.reset"
+  | "paypal.account_added"
+  | "paypal.account_updated"
+  | "paypal.account_disconnected"
+  | "fund.paypal_account_changed"
   | "bank.account_added"
   | "bank.account_disconnected"
   | "bank.account_updated"
@@ -621,4 +690,51 @@ export interface Session {
   id?: string;
   /** Set for NGO sessions. */
   memberRole?: MemberRole;
+}
+
+// ---------------------------------------------------- Declared payments ----
+
+export type PaymentMethod = "bank_transfer" | "card" | "cheque" | "cash" | "other";
+
+/**
+ * Money out that staff declared by hand from a receipt or invoice. It is posted
+ * to the fund's ledger straight away (type "expense"). If it was paid from a
+ * bank account, it waits for its bank line; when that line arrives it is
+ * matched to this payment instead of being posted a second time.
+ */
+export interface DeclaredPayment {
+  id: string;
+  ngoId: string;
+  fundId: string;
+  category?: Category;
+  /** Cents, positive. */
+  amount: number;
+  payee: string;
+  /** YYYY-MM-DD, as on the receipt. */
+  date: string;
+  method: PaymentMethod;
+  invoiceNumber?: string;
+  description: string;
+  /** Payee and description as posted to the ledger: a private person's name is replaced, like on bank lines. */
+  publicPayee: string;
+  publicDescription: string;
+  receipt?: {
+    fileId: string;
+    engine: BankReceipt["engine"];
+    extraction?: BankReceipt["extraction"];
+    note?: string;
+    /** Fields the person changed from what was read off the receipt. */
+    edited?: string[];
+  };
+  /** awaiting_bank: paid from a bank account, its line hasn't arrived yet. no_bank: cash and the like. */
+  status: "awaiting_bank" | "matched" | "no_bank" | "void";
+  bankTxnId?: string;
+  matchedAt?: string;
+  matchedBy?: string;
+  byId: string;
+  byName: string;
+  createdAt: string;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
 }

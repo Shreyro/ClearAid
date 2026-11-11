@@ -47,19 +47,19 @@ const CATEGORIES: [string, string][] = [
 ];
 
 const TONE: Record<string, string> = {
-  auth: "bg-[#efeee9] text-ink-2",
-  withdrawal: "bg-[#e8f1fc] text-[#1c4f8f]",
-  transaction: "bg-[#e7f6e7] text-good-ink",
-  bank: "bg-[#e6f4f1] text-[#0f5f56]",
-  ngo: "bg-[#fff4d6] text-[#7a5200]",
-  refund: "bg-[#fff4d6] text-[#7a5200]",
+  auth: "bg-hover text-ink-2",
+  withdrawal: "bg-info-wash text-info-ink",
+  transaction: "bg-good-wash text-good-ink",
+  bank: "bg-brand-wash text-brand-deep",
+  ngo: "bg-warn-wash text-warn-ink",
+  refund: "bg-warn-wash text-warn-ink",
   assignment: "bg-brand-wash text-brand-ink",
   member: "bg-brand-wash text-brand-ink",
-  fund: "bg-[#f1ecfb] text-[#5b3d99]",
-  vendor: "bg-[#f1ecfb] text-[#5b3d99]",
-  embed: "bg-[#e8f1fc] text-[#1c4f8f]",
-  export: "bg-[#efeee9] text-ink-2",
-  demo: "bg-[#fbe9e9] text-[#9b2424]",
+  fund: "bg-ai-wash text-ai-ink",
+  vendor: "bg-ai-wash text-ai-ink",
+  embed: "bg-info-wash text-info-ink",
+  export: "bg-hover text-ink-2",
+  demo: "bg-bad-wash text-bad-ink",
 };
 
 /** Must match canonicalAudit() in backend/src/lib/audit.ts byte for byte. */
@@ -98,7 +98,7 @@ export default function AuditPage() {
         field: "action",
         headerName: "Action",
         width: 200,
-        cellRenderer: (p: { value: string }) => <span className={clsx("inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold font-mono", TONE[p.value.split(".")[0]] ?? TONE.auth)}>{p.value}</span>,
+        cellRenderer: (p: { value: string }) => <span className={clsx("inline-block rounded-full px-2 py-0.5 text-xs font-semibold font-mono", TONE[p.value.split(".")[0]] ?? TONE.auth)}>{p.value}</span>,
       },
       { field: "fundTitle", headerName: "Fund", width: 190, tooltipField: "fundTitle" },
       { field: "summary", headerName: "What happened", flex: 1, minWidth: 320, tooltipField: "summary" },
@@ -150,7 +150,7 @@ export default function AuditPage() {
       }
     >
       {data && (
-        <div className={clsx("card p-3 mb-4 text-sm flex flex-wrap items-center gap-x-3 gap-y-1", data.chain.valid ? "bg-[#f3faf3] border-[#cfe9cf]" : "bg-[#fdf2f2] border-[#f0c4c4]")}>
+        <div className={clsx("card p-3 mb-4 text-sm flex flex-wrap items-center gap-x-3 gap-y-1", data.chain.valid ? "bg-good-soft border-good-line" : "bg-bad-soft border-bad-line")}>
           {data.chain.valid ? <ShieldCheck className="h-4 w-4 text-good-ink" /> : <ShieldX className="h-4 w-4 text-critical" />}
           <span className="font-medium">{data.chain.valid ? "Audit chain intact" : `Audit chain broken at entry #${data.chain.brokenAt}`}</span>
           <span className="text-ink-2">{data.chain.length} entries in total{data.chain.head && <> · head <span className="font-mono text-xs">{data.chain.head.slice(0, 16)}…</span></>}</span>

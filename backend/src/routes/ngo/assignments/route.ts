@@ -86,6 +86,7 @@ export const POST = handle(async (req: Request) => {
         const found = findMember(db, b.memberId);
         if (!found || found.ngo.id !== me.ngoId) throw new HttpError(404, "Unknown team member");
         if (!found.member.active) throw new HttpError(400, `${found.member.name}'s account is deactivated`);
+        if (found.member.role === "donor") throw new HttpError(400, `${found.member.name} has a read-only donor login and can't be an approver`);
         if (f.status === "closed") throw new HttpError(400, "This fund is closed");
         if (!f.assignees.includes(found.member.id)) {
           f.assignees.push(found.member.id);

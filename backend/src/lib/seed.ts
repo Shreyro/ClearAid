@@ -5,11 +5,11 @@ import { config } from "./config";
 import { appendLedger } from "./ledger";
 import { attribute, donationAvailable, recordDonation } from "./funds";
 import { receiptSvg, photoSvg } from "./seed-art";
-import type { AuditCheck, Category, DB, Fund, FundPolicy, Need, StoredFile, Vendor, Verdict, Withdrawal } from "./types";
+import type { AuditCheck, Category, DB, Fund, FundPolicy, MemberRole, Need, StoredFile, Vendor, Verdict, Withdrawal } from "./types";
 import { categoryLabel } from "./types";
 import { hashPassword } from "./password";
 import { seedAuditLog } from "./seed-audit";
-import { seedBank } from "./seed-bank";
+import { seedBank, seedFieldAccount, seedPayPalAccounts } from "./seed-bank";
 
 /**
  * Demo NGO sign-ins. They're shown on the sign-in page so judges can try the
@@ -19,6 +19,7 @@ export const DEMO_LOGINS = [
   { memberId: "adm_priya", username: "priya", password: "admin-demo", note: "Admin: manages staff, fund assignments, funds and vendors" },
   { memberId: "adm_daniel", username: "daniel", password: "user-demo", note: "Staff: assigned to all three funds" },
   { memberId: "adm_meera", username: "meera", password: "user-demo", note: "Staff: no funds yet, has asked to join Monsoon Preparedness" },
+  { memberId: "dnr_maya", username: "maya", password: "donor-demo", note: "Donor: read-only, sees where the money went and nothing else" },
 ] as const;
 
 /**
@@ -86,9 +87,10 @@ export function buildSeed(version: number): DB {
       { id: "adm_priya", name: "Priya Raman", title: "Finance Lead", role: "admin" },
       { id: "adm_daniel", name: "Daniel Okafor", title: "Field Director", role: "user" },
       { id: "adm_meera", name: "Meera Iyer", title: "Logistics Coordinator", role: "user" },
+      { id: "dnr_maya", name: "Maya Chen", title: "Donor", role: "donor" },
     ].map((m) => {
       const login = DEMO_LOGINS.find((l) => l.memberId === m.id)!;
-      return { ...m, role: m.role as "admin" | "user", username: login.username, passwordHash: hashPassword(login.password), active: true, createdAt: iso(now - 120 * DAY) };
+      return { ...m, role: m.role as MemberRole, username: login.username, passwordHash: hashPassword(login.password), active: true, createdAt: iso(now - 120 * DAY) };
     }),
   });
 
@@ -160,6 +162,7 @@ export function buildSeed(version: number): DB {
     ],
     vendorIds: allVendors,
     assignees: ["adm_priya", "adm_daniel"],
+    viewers: ["dnr_maya"],
     trackingCodes: ["RO1", "ASHA"],
     carryForwardFundId: "fund_monsoon",
     accent: "#0f766e",
@@ -202,7 +205,7 @@ export function buildSeed(version: number): DB {
     lng: 85.88,
     startedAt: iso(now - 75 * DAY),
     description:
-      "Emergency response to flash floods along the Mahanadi. State relief reached the villages sooner than expected, so the response finished under budget. Unspent money is now being returned to donors or carried forward, as each donor chooses.",
+      "Emergency response to flash floods along the Mahanadi. State relief reached the villages sooner than expected, so the response finished under budget. The fund is closing: an admin decides how much of what's left moves to other funds, and the rest stays in the bank, tracked on this fund.",
     goal: 2000000,
     status: "active",
     policy: policy(),
@@ -583,6 +586,8 @@ export function buildSeed(version: number): DB {
   events.sort((a, b) => a.t - b.t).forEach((e) => e.run());
   void byKey;
   seedBank(db, now);
+  seedFieldAccount(db, now);
+  seedPayPalAccounts(db, now);
   seedAuditLog(db, now);
   return db;
 }

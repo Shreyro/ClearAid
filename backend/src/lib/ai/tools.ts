@@ -68,9 +68,8 @@ export function fundOverview(db: DB, idOrSlug: string) {
       dualApprovalAtUsd: usd(fund.policy.dualApprovalThreshold),
       maxSingleWithdrawalUsd: usd(fund.policy.maxSingleWithdrawal),
       categoryCapsPct: fund.policy.categoryCaps,
-      leftoverDefault: fund.policy.leftoverDefault,
     },
-    closure: fund.status === "closing" ? closurePreview(db, fund) : undefined,
+    closure: fund.status !== "active" ? (({ held, movedOut }) => ({ heldUsd: usd(held), movedToOtherFundsUsd: usd(movedOut) }))(closurePreview(db, fund)) : undefined,
   };
 }
 

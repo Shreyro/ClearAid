@@ -3,7 +3,7 @@ import { anonymiseBankLine } from "./anonymise";
 import { bankParty, buildFlow, type FlowLink, type FlowNode } from "./flow";
 import { fundStats } from "./funds";
 import { verifyChain } from "./ledger";
-import { CATEGORIES, categoryLabel, type Category, type DB, type EmbedPublish, type Fund, type LedgerEntry, type PublicEmbed, type Vendor } from "./types";
+import { CATEGORIES, categoryLabel, type Category, type DB, type EmbedPublish, type EmbedTheme, type Fund, type LedgerEntry, type PublicEmbed, type Vendor } from "./types";
 
 /**
  * Public embeds: a read-only widget for one fund that the NGO can put on any
@@ -33,7 +33,11 @@ export const DEFAULT_PUBLISH: EmbedPublish = {
   timeline: false,
   activity: 0,
   integrity: true,
+  funds: false,
 };
+
+/** The fundId of an embed that publishes every fund of the NGO together. Fund ids start with "fund_", so this can't clash. */
+export const ALL_FUNDS = "all";
 
 const ACTIVITY_SIZES = [0, 5, 10, 25] as const;
 const PAYEE_MODES = ["off", "registered", "all"] as const;
@@ -51,6 +55,7 @@ export function cleanPublish(input: unknown): EmbedPublish {
     timeline: on("timeline"),
     activity: ACTIVITY_SIZES.find((n) => n === Number(o.activity)) ?? 0,
     integrity: on("integrity"),
+    funds: on("funds"),
   };
 }
 
@@ -66,11 +71,17 @@ export function publishedBlocks(p: EmbedPublish): string[] {
     p.timeline && "money in and out over time",
     p.activity > 0 && `latest ${p.activity} movements`,
     p.integrity && "ledger integrity proof",
+    p.funds && "each fund's totals",
   ].filter((x): x is string => Boolean(x));
 }
 
 /** 128 random bits: the key is the only thing that makes an embed findable. */
 export const newEmbedKey = () => randomBytes(16).toString("base64url");
+
+const THEMES = ["light", "dark", "auto"] as const;
+/** Read a theme from untrusted input; anything else is the default, light. */
+export const cleanTheme = (raw: unknown): EmbedTheme => THEMES.find((t) => t === raw) ?? "light";
+export const THEME_LABEL: Record<EmbedTheme, string> = { light: "light", dark: "dark", auto: "matches the visitor's device" };
 
 /** The NGO's embeds. Data saved before embeds existed has no list yet. */
 export function embedsOf(db: DB): PublicEmbed[] {
@@ -79,13 +90,16 @@ export function embedsOf(db: DB): PublicEmbed[] {
 
 /** An embed as the admin screen shows it. */
 export function embedView(db: DB, e: PublicEmbed) {
-  const fund = db.funds.find((f) => f.id === e.fundId);
+  const all = e.fundId === ALL_FUNDS;
+  const funds = selectedFunds(db, e.ngoId, e);
   return {
     id: e.id,
     key: e.key,
     name: e.name,
-    fundId: e.fundId,
-    fundTitle: fund?.title ?? "Unknown fund",
+    allFunds: all,
+    theme: e.theme ?? "light",
+    fundIds: all ? [] : funds.map((f) => f.id),
+    fundTitle: all ? "All funds" : funds.map((f) => f.title).join(", ") || "Unknown fund",
     publish: e.publish,
     blocks: publishedBlocks(e.publish),
     enabled: e.enabled,
@@ -121,8 +135,8 @@ function registeredPayee(vendors: Vendor[], name: string) {
 }
 
 /** How a payee may be named in public under the embed's setting, or null if it may not be. */
-function payeeNamer(db: DB, fund: Fund, mode: EmbedPublish["payees"]) {
-  const vendors = db.vendors.filter((v) => v.ngoId === fund.ngoId);
+function payeeNamer(db: DB, ngoId: string, mode: EmbedPublish["payees"]) {
+  const vendors = db.vendors.filter((v) => v.ngoId === ngoId);
   const knownOrganisations = vendors.map((v) => v.name);
   return (name: string): string | null => {
     if (mode === "off") return null;
@@ -130,7 +144,7 @@ function payeeNamer(db: DB, fund: Fund, mode: EmbedPublish["payees"]) {
     if (registered) return registered.name;
     if (mode !== "all") return null;
     // Lines imported before statements were anonymised may still carry a person's name or an account number.
-    const safe = anonymiseBankLine({ description: "", counterparty: name }, { scope: fund.ngoId, knownOrganisations }).counterparty;
+    const safe = anonymiseBankLine({ description: "", counterparty: name }, { scope: ngoId, knownOrganisations }).counterparty;
     return safe?.slice(0, 60) || null;
   };
 }
@@ -185,7 +199,7 @@ function timeline(ledger: LedgerEntry[], startedAt: string) {
       const e = sorted[i++];
       if (e.type === "donation" || e.type === "carry_forward_in" || e.type === "bank_in") moneyIn += e.amount;
       if (e.type === "refund" || e.type === "carry_forward_out") moneyIn += e.amount; // negative: money returned leaves the pot
-      if (e.type === "withdrawal" || e.type === "bank_out") moneyOut += -e.amount;
+      if (e.type === "withdrawal" || e.type === "bank_out" || e.type === "expense") moneyOut += -e.amount;
     }
     points.push({ date: new Date(start + d * DAY).toISOString().slice(0, 10), in: moneyIn, out: moneyOut });
   }
@@ -196,7 +210,7 @@ function timeline(ledger: LedgerEntry[], startedAt: string) {
 
 // ------------------------------------------------------------- Activity ----
 
-type Movement = { date: string; direction: "in" | "out"; label: string; detail?: string; payee?: string; amount: number };
+type Movement = { date: string; direction: "in" | "out"; label: string; detail?: string; payee?: string; amount: number; /** All-funds embeds: which fund. */ fund?: string };
 
 /** The latest ledger entries that moved money, described without anything that identifies a person. */
 function activity(db: DB, fund: Fund, ledger: LedgerEntry[], limit: number, nameOf: (name: string) => string | null): Movement[] {
@@ -215,6 +229,14 @@ function activity(db: DB, fund: Fund, ledger: LedgerEntry[], limit: number, name
       row.label = "Vendor payout";
       if (w) row.detail = categoryLabel(w.category);
       row.payee = (vendor && nameOf(vendor.name)) || undefined;
+    } else if (e.type === "expense") {
+      const p = db.payments?.find((x) => x.id === e.ref);
+      if (e.amount > 0) row.label = "Correction: a recorded payment was voided";
+      else {
+        row.label = "Payment (receipt on file)";
+        if (p?.category) row.detail = categoryLabel(p.category);
+        row.payee = (p && nameOf(p.publicPayee)) || undefined;
+      }
     } else if (e.type === "bank_in" || e.type === "bank_out") {
       const t = db.bankTxns.find((x) => x.id === e.ref);
       const reversal = (e.type === "bank_in") !== (e.amount > 0);
@@ -236,6 +258,10 @@ function activity(db: DB, fund: Fund, ledger: LedgerEntry[], limit: number, name
 // -------------------------------------------------------------- Payload ----
 
 export interface EmbedPayload {
+  /** Present only when two or more funds are published together. */
+  scope?: "combined";
+  /** How the widget is coloured (set on public responses; previews pass it themselves). */
+  theme?: EmbedTheme;
   fund: { title: string; region: string; status: Fund["status"]; accent: string };
   ngo: { name: string };
   /** When these numbers were read from the ledger. */
@@ -247,7 +273,9 @@ export interface EmbedPayload {
   flow?: { nodes: FlowNode[]; links: FlowLink[] };
   timeline?: { date: string; in: number; out: number }[];
   activity?: Movement[];
-  integrity?: { valid: boolean; entries: number; head: string | null };
+  integrity?: { valid: boolean; entries: number; head: string | null; ledgers?: number };
+  /** Combined embeds: each fund's own totals, largest first. */
+  funds?: { title: string; status: Fund["status"]; accent: string; in: number; out: number; held: number }[];
 }
 
 /**
@@ -258,32 +286,58 @@ export interface EmbedPayload {
  */
 export function buildEmbedPayload(db: DB, fund: Fund, publish: EmbedPublish, now = new Date()): EmbedPayload {
   const ngo = db.ngos.find((n) => n.id === fund.ngoId);
-  const ledger = db.ledger.filter((l) => l.fundId === fund.id);
-  const out: EmbedPayload = {
-    fund: { title: fund.title, region: fund.region, status: fund.status, accent: fund.accent },
+  const header = { fund: { title: fund.title, region: fund.region, status: fund.status, accent: fund.accent }, ngo: { name: ngo?.name ?? "" }, asOf: now.toISOString() };
+  return assemble(db, fund.ngoId, [fund], header, { ...publish, funds: false });
+}
+
+/**
+ * Several funds added together (every fund of the NGO, or the ones an admin
+ * ticked). Fund names are public already on their donation links; nothing
+ * else about a fund is added beyond the blocks switched on.
+ */
+export function buildCombinedPayload(db: DB, ngoId: string, funds: Fund[], publish: EmbedPublish, title: string, now = new Date()): EmbedPayload {
+  const ngo = db.ngos.find((n) => n.id === ngoId);
+  const header = {
+    scope: "combined" as const,
+    fund: { title, region: "", status: (funds.some((f) => f.status === "active") ? "active" : "closed") as Fund["status"], accent: "#0f766e" },
     ngo: { name: ngo?.name ?? "" },
     asOf: now.toISOString(),
   };
+  return assemble(db, ngoId, funds, header, publish);
+}
+
+function assemble(db: DB, ngoId: string, funds: Fund[], header: Pick<EmbedPayload, "scope" | "fund" | "ngo" | "asOf">, publish: EmbedPublish): EmbedPayload {
+  const many = header.scope === "combined";
+  const out: EmbedPayload = { ...header };
+  const ids = new Set(funds.map((f) => f.id));
+  const ledgerOf = (f: Fund) => db.ledger.filter((l) => l.fundId === f.id);
+  const ledger = db.ledger.filter((l) => ids.has(l.fundId));
+  const stats = funds.map((f) => ({ f, s: fundStats(db, f) }));
 
   if (publish.totals) {
-    const s = fundStats(db, fund);
-    out.totals = { in: s.raised, out: s.spent, returned: s.refunded + s.carriedOut, held: s.balance };
+    out.totals = stats.reduce((a, { s }) => ({ in: a.in + s.raised, out: a.out + s.spent, returned: a.returned + s.refunded + s.carriedOut, held: a.held + s.balance }), { in: 0, out: 0, returned: 0, held: 0 });
   }
 
-  const nameOf = payeeNamer(db, fund, publish.payees);
+  const nameOf = payeeNamer(db, ngoId, publish.payees);
 
   if (publish.sources || publish.categories || publish.flow || publish.payees !== "off") {
-    const graph = buildFlow(db, [fund], { ngoId: fund.ngoId, includeUntraced: false });
-    const fundNode = `fund:${fund.id}`;
+    const graph = buildFlow(db, funds, { ngoId, includeUntraced: false });
+    // Public node ids never carry internal fund ids: one fund is "fund"; several are "fund:0", "fund:1" and so on.
+    const publicFund = new Map(funds.map((f, i) => [`fund:${f.id}`, many ? `fund:${i}` : "fund"]));
     const sources = new Map<string, Channel & { amount: number }>();
     const dests = new Map<string, Dest & { amount: number }>();
+    const inLinks = new Map<string, number>();
+    const outLinks = new Map<string, number>();
+    const bump = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
     for (const l of graph.category.links) {
-      if (l.target === fundNode) {
+      if (publicFund.has(l.target)) {
         const c = channelOf(l.source);
         sources.set(c.id, { ...c, amount: (sources.get(c.id)?.amount ?? 0) + l.value });
-      } else if (l.source === fundNode) {
+        bump(inLinks, `src:${c.id}|${publicFund.get(l.target)}`, l.value);
+      } else if (publicFund.has(l.source)) {
         const d = destOf(l.target);
         dests.set(d.id, { ...d, amount: (dests.get(d.id)?.amount ?? 0) + l.value });
+        bump(outLinks, `${publicFund.get(l.source)}|dst:${d.id}`, l.value);
       }
     }
     const byAmount = (a: { amount: number }, b: { amount: number }) => b.amount - a.amount;
@@ -297,14 +351,14 @@ export function buildEmbedPayload(db: DB, fund: Fund, publish: EmbedPublish, now
     if (publish.flow) {
       const nodes: FlowNode[] = [
         ...[...sources.values()].map((s): FlowNode => ({ id: `src:${s.id}`, label: s.label, column: 0, kind: "source" })),
-        { id: "fund", label: fund.title, column: 1, kind: "fund", color: fund.accent },
+        ...funds.map((f): FlowNode => ({ id: publicFund.get(`fund:${f.id}`)!, label: f.title, column: 1, kind: "fund", color: f.accent })),
         ...[...dests.values()].map((d): FlowNode => ({ id: `dst:${d.id}`, label: d.label, column: 2, kind: "dest" })),
       ];
-      const links: FlowLink[] = [
-        ...[...sources.values()].map((s) => ({ source: `src:${s.id}`, target: "fund", value: s.amount })),
-        ...[...dests.values()].map((d) => ({ source: "fund", target: `dst:${d.id}`, value: d.amount })),
-      ];
-      out.flow = { nodes, links };
+      const split = (k: string) => k.split("|") as [string, string];
+      const links: FlowLink[] = [...inLinks, ...outLinks].map(([k, value]) => ({ source: split(k)[0], target: split(k)[1], value }));
+      // A fund with no money yet would be a floating box.
+      const used = new Set(links.flatMap((l) => [l.source, l.target]));
+      out.flow = { nodes: nodes.filter((n) => used.has(n.id) || (!many && n.kind === "fund")), links };
     }
     if (publish.payees !== "off") {
       const named = new Map<string, { name: string; amount: number; payments: number }>();
@@ -324,19 +378,57 @@ export function buildEmbedPayload(db: DB, fund: Fund, publish: EmbedPublish, now
     }
   }
 
-  if (publish.timeline) out.timeline = timeline(ledger, fund.startedAt);
-  if (publish.activity > 0) out.activity = activity(db, fund, ledger, publish.activity, nameOf);
+  if (publish.timeline) {
+    const start = funds.reduce((a, f) => (f.startedAt < a ? f.startedAt : a), funds[0]?.startedAt ?? new Date().toISOString());
+    out.timeline = timeline(ledger, start);
+  }
+  if (publish.activity > 0) {
+    out.activity = funds
+      .flatMap((f) => activity(db, f, ledgerOf(f), publish.activity, nameOf).map((m) => (many ? { ...m, fund: f.title } : m)))
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, publish.activity);
+  }
   if (publish.integrity) {
-    const chain = verifyChain(ledger);
-    out.integrity = { valid: chain.valid, entries: ledger.length, head: (chain.valid && chain.head) || null };
+    const chains = funds.map((f) => {
+      const l = ledgerOf(f);
+      return { entries: l.length, c: verifyChain(l) };
+    });
+    const valid = chains.every((x) => x.c.valid);
+    out.integrity = many
+      ? { valid, entries: ledger.length, head: null, ledgers: funds.length }
+      : { valid, entries: chains[0]?.entries ?? 0, head: (valid && chains[0]?.c.head) || null };
+  }
+  if (many && publish.funds) {
+    out.funds = stats.map(({ f, s }) => ({ title: f.title, status: f.status, accent: f.accent, in: s.raised, out: s.spent, held: s.balance })).sort((a, b) => b.in - a.in);
   }
   return out;
+}
+
+/** Every fund of the NGO, for an "all funds" embed. */
+export const allFundsOf = (db: DB, ngoId: string) => db.funds.filter((f) => f.ngoId === ngoId);
+
+/**
+ * The funds an embed (or a draft of one) publishes, in the NGO's order. Funds
+ * of another NGO and deleted funds are dropped, never published.
+ */
+export function selectedFunds(db: DB, ngoId: string, sel: { fundId: string; fundIds?: string[] }) {
+  if (sel.fundId === ALL_FUNDS) return allFundsOf(db, ngoId);
+  const want = new Set(sel.fundIds?.length ? sel.fundIds : [sel.fundId]);
+  return db.funds.filter((f) => f.ngoId === ngoId && want.has(f.id));
+}
+
+/** The public response for a selection: one fund as before, two or more added together. */
+export function payloadFor(db: DB, ngoId: string, sel: { fundId: string; fundIds?: string[] }, publish: EmbedPublish) {
+  const funds = selectedFunds(db, ngoId, sel);
+  if (!funds.length) return null;
+  if (sel.fundId !== ALL_FUNDS && funds.length === 1) return buildEmbedPayload(db, funds[0], publish);
+  return buildCombinedPayload(db, ngoId, funds, publish, sel.fundId === ALL_FUNDS ? "All our relief funds" : "Our relief funds");
 }
 
 /** The payload behind a public key, or null if there is no live embed with that key. */
 export function publicEmbedPayload(db: DB, key: string) {
   const embed = embedsOf(db).find((e) => e.key === key);
   if (!embed || !embed.enabled) return null;
-  const fund = db.funds.find((f) => f.id === embed.fundId && f.ngoId === embed.ngoId);
-  return fund ? { embed, payload: buildEmbedPayload(db, fund, embed.publish) } : null;
+  const payload = payloadFor(db, embed.ngoId, embed, embed.publish);
+  return payload ? { embed, payload: { ...payload, theme: embed.theme ?? "light" } } : null;
 }

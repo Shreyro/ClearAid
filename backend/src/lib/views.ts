@@ -1,3 +1,4 @@
+import { fundAccount } from "./paypal-accounts";
 import { closurePreview, donorLabel, fundStats, requiredApprovals } from "./funds";
 import { activeAssignees, isAssigned, ngoCanSeeFund } from "./session";
 import type { DB, Fund, Session, Withdrawal } from "./types";
@@ -75,6 +76,7 @@ export function fundCard(db: DB, f: Fund) {
     trackingCodes: f.trackingCodes ?? [],
     bankIn: s.bankIn,
     bankOut: s.bankOut,
+    paypalAccountId: fundAccount(db, f).id,
     demo: f.demo,
   };
 }
@@ -120,8 +122,7 @@ export function fundDetail(db: DB, f: Fund, session: Session) {
     stats,
     withdrawals: ws,
     donations,
-    closure: f.status === "closing" ? closurePreview(db, f) : null,
-    otherFunds: db.funds.filter((x) => x.id !== f.id && x.status === "active").map((x) => ({ id: x.id, title: x.title, slug: x.slug })),
+    closure: f.status !== "active" ? closurePreview(db, f) : null,
     insights: f.insights ?? null,
   };
 }
