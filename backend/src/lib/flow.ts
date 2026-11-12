@@ -31,7 +31,8 @@ export function bankParty(t: { counterparty?: string; description: string }) {
 }
 const BALANCE = "dst:balance";
 
-export function buildFlow(db: DB, funds: Fund[], opts: { ngoId: string; includeUntraced: boolean; payeeLimit?: number }) {
+export function buildFlow(db: DB, funds: Fund[], opts: { ngoId: string; includeUntraced: boolean; payeeLimit?: number; month?: string }) {
+  const inMonth = (date: string) => !opts.month || date.startsWith(opts.month);
   const ids = new Set(funds.map((f) => f.id));
   const nodes = new Map<string, FlowNode>();
   const node = (n: FlowNode) => {
@@ -70,7 +71,7 @@ export function buildFlow(db: DB, funds: Fund[], opts: { ngoId: string; includeU
 
   // ---- Fund ledgers: PayPal donations, staff-recorded receipts, payouts, refunds, carries.
   for (const e of db.ledger) {
-    if (!ids.has(e.fundId)) continue;
+    if (!ids.has(e.fundId) || !inMonth(e.ts)) continue;
     const fn = `fund:${e.fundId}`;
     const ft = title(e.fundId);
     const v = Math.abs(e.amount);
@@ -94,7 +95,7 @@ export function buildFlow(db: DB, funds: Fund[], opts: { ngoId: string; includeU
 
   // ---- Payments staff declared from a receipt (voided ones are left out; their bank line, if any, is matched, not counted).
   for (const p of db.payments ?? []) {
-    if (p.status === "void" || !ids.has(p.fundId)) continue;
+    if (p.status === "void" || !ids.has(p.fundId) || !inMonth(p.date)) continue;
     const d = catDest(p.category);
     spend(`fund:${p.fundId}`, d.id, d.label, p.publicPayee, p.amount, title(p.fundId), "Declared payment");
   }
@@ -103,7 +104,7 @@ export function buildFlow(db: DB, funds: Fund[], opts: { ngoId: string; includeU
   const accounts = new Map(db.bankAccounts.filter((a) => a.ngoId === opts.ngoId).map((a) => [a.id, a]));
   for (const t of db.bankTxns) {
     const acc = accounts.get(t.accountId);
-    if (!acc) continue;
+    if (!acc || !inMonth(t.date)) continue;
     const srcId = `src:bank:${acc.id}`;
     const who = bankParty(t);
     if (t.allocations.length) {

@@ -199,6 +199,19 @@ export function untracedSummary(db: DB, ngoId: string) {
   return `BANK LINES NOT ON ANY FUND: ${lines.length} in all. Receipts: ${rec.length} totalling ${total(rec)}. Payments: ${pay.length} totalling ${total(pay)}. Bank fees: ${fees.length} totalling ${total(fees)}.`;
 }
 
+/** Largest payees and sources for this month and last month, so period questions copy real figures. */
+function periodParties(db: DB, f: Fund) {
+  const now = new Date();
+  const cur = now.toISOString().slice(0, 7);
+  const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+  const line = (label: string, month: string, kind: "payees" | "sources") => {
+    const flow = buildFlow(db, [f], { ngoId: f.ngoId, includeUntraced: false, month });
+    const rows = flow[kind].slice(0, 5).map((p) => `${p.name} ${money(p.total)}`);
+    return `${label} (${month}): ${rows.join("; ") || "none"}`;
+  };
+  return [line("PAYEES THIS MONTH", cur, "payees"), line("PAYEES LAST MONTH", prev, "payees"), line("SOURCES THIS MONTH", cur, "sources"), line("SOURCES LAST MONTH", prev, "sources")];
+}
+
 export function fundSummary(db: DB, f: Fund, audience: Audience) {
   const s = fundStats(db, f);
   const flow = buildFlow(db, [f], { ngoId: f.ngoId, includeUntraced: false, payeeLimit: 12 });
@@ -246,6 +259,7 @@ export function fundSummary(db: DB, f: Fund, audience: Audience) {
     byCategoryTop ? `BIGGEST SPENDING CATEGORY: ${byCategoryTop}` : "",
     flow.sources.length ? `LARGEST SOURCES OF MONEY IN:\n${flow.sources.slice(0, 8).map(party).join("\n")}` : "",
     flow.payees.length ? `LARGEST PAYEES (MONEY OUT):\n${flow.payees.slice(0, 10).map(party).join("\n")}` : "",
+    ...periodParties(db, f),
     audience === "staff" && waiting ? `DECLARED PAYMENTS STILL WAITING FOR THEIR BANK LINE: ${waiting}` : "",
   ]
     .filter(Boolean)

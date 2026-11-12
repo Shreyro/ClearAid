@@ -6,6 +6,7 @@ import type { Session } from "../types";
 import { buildIndexes, type Doc, fundIndex, fundRankings, fundSummary, untracedSummary } from "./docs";
 import { fundsMentioned, scopeFor } from "./scope";
 import { scrub } from "./scrub";
+import { dropUnsupported, unsupportedAmounts } from "./verify";
 
 /**
  * The local Copilot: retrieval over FAISS (rag/server.py) plus a local Llama
@@ -129,6 +130,8 @@ Rules:
 - For progress against the goal, copy PROGRESS TO GOAL and say whether you mean money raised or the balance still held. "Reached the goal" means raised.
 - To compare or rank funds (most, least, highest, lowest, closest) copy the RANKED lines; never rank amounts yourself. For the largest spending category copy BIGGEST SPENDING CATEGORY.
 - For a period ("last month", "this month", "in October") use the THIS MONTH, LAST MONTH and BY MONTH lines. If the period isn't there, say you have no figures for it. Never invent a figure for a period.
+- For payees or sources in a month copy PAYEES THIS MONTH, PAYEES LAST MONTH, SOURCES THIS MONTH or SOURCES LAST MONTH; never use all-time payee amounts for a month. For "each fund" in a period, mention every fund listed under EACH FUND, LAST MONTH or THIS MONTH.
+- For how much was spent on a particular category (food, shelter...) copy CATEGORY ASKED ABOUT.
 - For how much is not on any fund yet, copy BANK LINES NOT ON ANY FUND; never add up passages.
 - Category totals already include every payment in that category (many small boat-hire payments are inside Logistics & transport's total). So the biggest category is exactly the one in BIGGEST SPENDING CATEGORY; don't add payments up or second-guess it.
 - Give one answer. Never contradict yourself or correct yourself partway through.
@@ -166,6 +169,11 @@ export async function askCopilot(args: { session: Session; question: string; fun
   const small = smallTalk(args.question, me.name);
   if (small) return { ...base, reply: small, sources: [], scope: { funds: [], narrowed: false } };
 
+  // One character isn't a question: ask rather than guess.
+  if (args.question.replace(/[^a-z0-9]/gi, "").length < 2 && !args.history?.length) {
+    return { ...base, reply: "I'm not sure what you're asking. Try something like: how much is left in a fund, where did the money go, or what's untagged.", sources: [], scope: { funds: [], narrowed: false } };
+  }
+
   // The AI may be asleep to save cost: wake it, and ask the person to come back in a minute.
   if (powerManaged()) {
     const woke = await wakeAi();
@@ -176,6 +184,11 @@ export async function askCopilot(args: { session: Session; question: string; fun
 
   if (!scope.funds.length && !scope.includeUntraced) {
     return { ...base, reply: "You don't have access to any fund yet, so there's nothing I can answer about. Ask an admin to give you access.", sources: [], scope: { funds: [], narrowed: false } };
+  }
+
+  // Bank lines that aren't on a fund are staff-only: say so instead of letting the model improvise from fund data.
+  if (!scope.includeUntraced && /\b(untagged|untraced|not on any fund|unallocated)\b/i.test(args.question)) {
+    return { ...base, reply: "Bank lines that aren't on a fund yet are only visible to staff. I can tell you about the funds you have access to: what they raised, spent and still hold.", sources: [], scope: { funds: [], narrowed: false } };
   }
 
   // Which funds is this about? A picked fund, or funds named in the question; otherwise all the person may see.
@@ -223,29 +236,59 @@ export async function askCopilot(args: { session: Session; question: string; fun
   const summaries = funds.map((f) => fundSummary(db, f, scope.audience)).join("\n\n");
   const passages = hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n");
   // Rankings and totals of lines not on a fund are worked out in code: the model only copies them.
-  const biggest = funds
-    .map((f) => ({ f, line: fundSummary(db, f, scope.audience).split("\n").find((l) => l.startsWith("BIGGEST SPENDING CATEGORY")) }))
-    .filter((x) => x.line)
-    .map((x) => `${x.f.title}: ${x.line}`)
+  const lines = new Map(funds.map((f) => [f.id, fundSummary(db, f, scope.audience).split("\n")]));
+  const pick = (prefix: string) =>
+    funds
+      .map((f) => ({ f, line: lines.get(f.id)!.find((l) => l.startsWith(prefix)) }))
+      .filter((x) => x.line)
+      .map((x) => `${x.f.title}: ${x.line}`)
+      .join("\n");
+  const biggest = pick("BIGGEST SPENDING CATEGORY");
+  // Every fund's month figures side by side, so "each fund last month" can't skip one.
+  const months = funds.length > 1 ? `EACH FUND, LAST MONTH:\n${pick("LAST MONTH")}\nEACH FUND, THIS MONTH:\n${pick("THIS MONTH")}` : "";
+  // A category named in the question (food, shelter, hygiene...): hand over its exact total per fund.
+  const q = args.question.toLowerCase();
+  const asked = funds
+    .flatMap((f) => {
+      const cats = (lines.get(f.id)!.find((l) => l.startsWith("TOTAL MONEY OUT"))?.match(/by category: (.*)\)$/)?.[1] ?? "").split("; ");
+      return cats
+        .map((c) => c.match(/^(.*) (\$[\d,.]+)$/))
+        .filter((m): m is RegExpMatchArray => !!m && m[1].toLowerCase().split(/[^a-z]+/).some((w) => w.length > 3 && q.includes(w)) || (!!m && q.includes(m[1].toLowerCase())))
+        .map((m) => `${f.title}: spent ${m[2]} on ${m[1]}`);
+    })
     .join("\n");
-  const extras = [fundRankings(db, funds), biggest,scope.includeUntraced && !narrowed ? untracedSummary(db, me.ngoId) : ""].filter(Boolean);
+  const categoryAsked = asked ? `CATEGORY ASKED ABOUT (exact totals):\n${asked}` : "";
+  const extras = [fundRankings(db, funds), biggest, months, categoryAsked, scope.includeUntraced && !narrowed ? untracedSummary(db, me.ngoId) : ""].filter(Boolean);
   const comparisons = extras.length ? `COMPARISONS AND TOTALS (copy these; do not work out your own)\n${extras.join("\n")}\n\n` : "";
   const history = (args.history ?? []).slice(-10).map((m) => ({ role: m.role, content: m.text.slice(0, 1500) }));
 
-  const reply = await ollamaChat([
-    { role: "system", content: SYSTEM },
-    ...history,
-    {
-      role: "user",
-      content: `Asked by ${me.name} (${me.role === "donor" ? "donor, read-only" : me.role}). Funds in scope: ${funds.map((f) => f.title).join(", ") || "none (untraced bank lines only)"}. Today: ${new Date().toISOString().slice(0, 10)}.\n\nFUNDS CLOSING OR CLOSED (the answer to "close to closure", "closing" or "wrapping up"): ${funds.filter((f) => f.status !== "active").map((f) => `${f.title} (${f.status})`).join("; ") || "none"}\n\n${comparisons}FUND SUMMARIES\n${summaries || "(none)"}\n\nPASSAGES\n${passages || "(nothing matched)"}\n\nQUESTION\n${args.question}`,
-    },
-  ]);
+  // "Which category got the most money?" has one right answer, worked out in code: no model needed.
+  const CAT_Q = /\b(biggest|largest|top|most|highest)\b[^.?]*\bcategor|\bcategor[^.?]*\b(biggest|largest|most|highest)\b/i;
+  if (CAT_Q.test(args.question) && biggest && !/\b(and|then|why|how|who|payee)\b/i.test(args.question)) {
+    const head = "BIGGEST SPENDING CATEGORY: ";
+    const text = funds
+      .map((f) => ({ f, line: lines.get(f.id)!.find((l) => l.startsWith(head)) }))
+      .filter((x) => x.line)
+      .map((x) => `${x.f.title}'s biggest spending category is ${x.line!.slice(head.length).replace(/ (\$[\d,.]+)$/, " ($1)")}.`)
+      .join(" ");
+    return { ...base, reply: text, sources: [], scope: { funds: funds.map((f) => ({ id: f.id, title: f.title })), narrowed } };
+  }
+
+  const prompt = `Asked by ${me.name} (${me.role === "donor" ? "donor, read-only" : me.role}). Funds in scope: ${funds.map((f) => f.title).join(", ") || "none (untraced bank lines only)"}. Today: ${new Date().toISOString().slice(0, 10)}.\n\nFUNDS CLOSING OR CLOSED (the answer to "close to closure", "closing" or "wrapping up"): ${funds.filter((f) => f.status !== "active").map((f) => `${f.title} (${f.status})`).join("; ") || "none"}\n\n${comparisons}FUND SUMMARIES\n${summaries || "(none)"}\n\nPASSAGES\n${passages || "(nothing matched)"}\n\nQUESTION\n${args.question}`;
+  const ask = (extra = "") => ollamaChat([{ role: "system", content: SYSTEM }, ...history, { role: "user", content: prompt + extra }]);
+  // Every dollar figure must come from the data we sent. Ask once more if not; then drop what can't be backed up.
+  const known = `${prompt} ${history.map((m) => m.content).join(" ")}`;
+  let reply = scrub(await ask());
+  if (unsupportedAmounts(reply, known).length) {
+    reply = scrub(await ask("\n\n(Your last answer used amounts that are not in the data. Answer again using only amounts written above.)"));
+    if (unsupportedAmounts(reply, known).length) reply = dropUnsupported(reply, known) ?? "I can't give a reliable figure for that from the records I can see. Try naming the fund and the period.";
+  }
 
   const note = leftOut.length ? `
 
 (I left out ${leftOut.join(", ")}: you don't have access to ${leftOut.length > 1 ? "those funds" : "that fund"}.)` : "";
   return {
-    reply: scrub(reply || "I couldn't produce an answer from the records.") + note,
+    reply: (reply || "I couldn't produce an answer from the records.") + note,
     sources: hits.map((h, i) => ({ n: i + 1, id: h.id, fundTitle: h.meta.fundId ? titles.get(h.meta.fundId) : "Not on a fund yet", kind: h.meta.kind, date: h.meta.date, href: h.meta.href, text: h.text })),
     scope: { funds: funds.map((f) => ({ id: f.id, title: f.title })), narrowed },
     search,
