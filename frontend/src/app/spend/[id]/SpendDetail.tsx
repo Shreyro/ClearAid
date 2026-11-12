@@ -6,6 +6,7 @@ import { ArrowLeft, BadgeCheck, Bot, Camera, CheckCircle2, CircleDollarSign, Eye
 import { api, useJson, useLive, usd } from "@/components/hooks";
 import { Meter, Pill, RiskBadge, Section, StatusIcon, StatusPill } from "@/components/ui";
 import { CAT_LABEL, type WView } from "@/components/SpendCard";
+import { DataGrid } from "@/components/DataGrid";
 
 type Sess = { session: { role: string; id?: string; name?: string; member?: { role: "admin" | "user" | "donor" } | null } };
 
@@ -145,14 +146,18 @@ export function SpendDetail({ id }: { id: string }) {
                 <div><div className="text-xs text-muted">Total</div><span className="tnum">{a.receipt.total != null ? `${a.receipt.currency ?? ""} ${a.receipt.total.toLocaleString()}` : "—"}</span></div>
                 <div><div className="text-xs text-muted">Legible</div>{a.receipt.legible ? "Yes" : "No"}</div>
               </div>
-              <table className="w-full text-sm mt-4">
-                <thead><tr className="text-left text-xs text-muted border-b border-line"><th className="py-1.5 font-medium">Line item</th><th className="py-1.5 font-medium text-right">Qty</th><th className="py-1.5 font-medium text-right">Amount</th></tr></thead>
-                <tbody>
-                  {a.receipt.lineItems.map((li, i) => (
-                    <tr key={i} className="border-b border-line last:border-0"><td className="py-1.5">{li.description}</td><td className="py-1.5 text-right tnum">{li.quantity?.toLocaleString() ?? "—"}</td><td className="py-1.5 text-right tnum">{li.amount?.toLocaleString() ?? "—"}</td></tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="mt-4">
+                <DataGrid
+                  rows={a.receipt.lineItems}
+                  inCard={false}
+                  ariaLabel="Receipt line items"
+                  cols={[
+                    { header: "Line item", flex: 1, minWidth: 180, wrap: true, value: (li) => li.description },
+                    { header: "Qty", width: 90, align: "right", value: (li) => li.quantity ?? null, render: (li) => li.quantity?.toLocaleString() ?? "—" },
+                    { header: "Amount", width: 120, align: "right", value: (li) => li.amount ?? null, render: (li) => li.amount?.toLocaleString() ?? "—" },
+                  ]}
+                />
+              </div>
             </Section>
           )}
 

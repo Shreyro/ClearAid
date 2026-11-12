@@ -78,8 +78,9 @@ export function movementView(db: DB, e: LedgerEntry, fundTitle: string) {
   } else if (e.type === "expense") {
     const p = db.payments?.find((x) => x.id === e.ref);
     if (p) {
-      const how = { bank_transfer: "Bank transfer", card: "Card", cheque: "Cheque", cash: "Cash", other: "Other" }[p.method];
-      via = `${how} · ${p.status === "matched" ? "bank line matched" : p.status === "awaiting_bank" ? "waiting for bank line" : p.status === "void" ? "voided" : "no bank line"}`;
+      const how = { bank_transfer: "Bank transfer", card: "Card", cheque: "Cheque", cash: "Cash", other: "Other", paypal: "PayPal payout" }[p.method];
+      via = p.method === "paypal" ? `PayPal payout · ${p.status === "void" ? "voided" : (p.payout?.status ?? "sent").toLowerCase()}${p.payout && !p.payout.live ? " (simulated)" : ""}` : `${how} · ${p.status === "matched" ? "bank line matched" : p.status === "awaiting_bank" ? "waiting for bank line" : p.status === "void" ? "voided" : "no bank line"}`;
+      if (p.method === "paypal" && p.payout) account = { key: `paypal:${p.payout.accountId}`, name: db.paypalAccounts?.find((a) => a.id === p.payout!.accountId)?.name ?? "Main PayPal account", kind: "paypal" };
       if (p.receipt) detailHref = `/api/files/${p.receipt.fileId}`;
     }
   }

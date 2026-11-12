@@ -7,6 +7,7 @@ import { fmt, toCents } from "@/lib/money";
 import { actorOf, getSession, HttpError, isDonor, ngoMember, requireFundAccess, requireNgo, visibleFunds } from "@/lib/session";
 import { movementView } from "@/lib/movements";
 import { paypalAccountsOf } from "@/lib/paypal-accounts";
+import { entryKey, hasDocument, metaOf, metaView, tagsOf } from "@/lib/entry-meta";
 
 const csvCell = (v: unknown) => {
   if (typeof v === "number") return String(v);
@@ -14,6 +15,9 @@ const csvCell = (v: unknown) => {
   // Quote everything; neutralise spreadsheet formula injection.
   return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
 };
+
+/** One row: the movement, plus (staff only) its tags, documents and whether money out has its paperwork. */
+type Row = ReturnType<typeof movementView> & Partial<ReturnType<typeof metaView>> & { hasDocument?: boolean };
 
 /** Every money movement on funds the member can see, newest first. ?format=csv exports. */
 export const GET = handle(async (req: Request) => {
@@ -29,11 +33,22 @@ export const GET = handle(async (req: Request) => {
   const dir = q.get("direction");
   const text = q.get("q")?.toLowerCase().trim();
   const account = isDonor(s) ? null : q.get("account");
+  // Staff only: the NGO's own tags and documents added later; filter by a tag, or money out still missing its paperwork.
+  const staff = !isDonor(s);
+  const tag = staff ? q.get("tag") : null;
+  const missingDocs = staff && q.get("docs") === "missing";
+  const meta = metaOf(db);
 
   const rows = db.ledger
     .filter((e) => titles.has(e.fundId))
     .filter((e) => (from === null || Date.parse(e.ts) >= from) && (to === null || Date.parse(e.ts) < to))
-    .map((e) => movementView(db, e, titles.get(e.fundId)!))
+    .map((e): Row => {
+      const v = movementView(db, e, titles.get(e.fundId)!);
+      if (!staff) return v;
+      return { ...v, ...metaView(db, entryKey(e)), hasDocument: hasDocument(db, e, meta[entryKey(e)]) };
+    })
+    .filter((t) => !tag || Boolean(t.tags?.some((x) => x.id === tag)))
+    .filter((t) => !missingDocs || (t.direction === "out" && t.hasDocument === false))
     // Donors don't see other people's contact details.
     .map((t) => (isDonor(s) ? { ...t, counterpartyEmail: undefined, detailHref: t.type === "expense" ? undefined : t.detailHref } : t))
     // Default: money movements only. "all" adds notices (fund opened, request rejected…).
@@ -50,8 +65,10 @@ export const GET = handle(async (req: Request) => {
 
   if (q.get("format") === "csv") {
     mutate((d) => audit(d, { actor: actorOf(me), action: "export.transactions", fundId: q.get("fund") || undefined, summary: `Exported ${rows.length} transactions to CSV` }));
-    const head = ["Date", "From", "To", "Amount (USD)", "Direction", "Fund", "Type", "Via", "Counterparty email", "Memo", "Reference", "Ledger #", "Entry hash"];
-    const body = rows.map((r) => [r.ts, r.from, r.to, Number((r.amount / 100).toFixed(2)), r.direction, r.fundTitle, r.typeLabel, r.via, r.counterpartyEmail, r.memo, r.paypalRef, r.seq, r.hash].map(csvCell).join(","));
+    const head = ["Date", "From", "To", "Amount (USD)", "Direction", "Fund", "Type", "Via", "Counterparty email", "Memo", "Reference", "Ledger #", "Entry hash", ...(staff ? ["Tags", "Documents"] : [])];
+    const body = rows.map((r) =>
+      [r.ts, r.from, r.to, Number((r.amount / 100).toFixed(2)), r.direction, r.fundTitle, r.typeLabel, r.via, r.counterpartyEmail, r.memo, r.paypalRef, r.seq, r.hash, ...(staff ? [(r.tags ?? []).map((x) => x.name).join("; "), r.docs?.length ?? 0] : [])].map(csvCell).join(","),
+    );
     return new Response([head.map(csvCell).join(","), ...body].join("\r\n"), {
       headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="clearaid-transactions-${nowIso().slice(0, 10)}.csv"` },
     });
@@ -63,7 +80,8 @@ export const GET = handle(async (req: Request) => {
         ...paypalAccountsOf(db, me.ngoId).map((a) => ({ key: `paypal:${a.id}`, name: a.name, kind: "paypal" as const })),
         ...db.bankAccounts.filter((a) => a.ngoId === me.ngoId).map((a) => ({ key: `bank:${a.id}`, name: a.name, kind: "bank" as const })),
       ];
-  return json({ transactions: rows.slice(0, 2000), totals, funds: all.map((f) => ({ id: f.id, title: f.title })), accounts });
+  const tags = staff ? tagsOf(db).filter((t) => t.ngoId === me.ngoId).map((t) => ({ id: t.id, name: t.name, color: t.color })) : [];
+  return json({ transactions: rows.slice(0, 2000), totals, funds: all.map((f) => ({ id: f.id, title: f.title })), accounts, tags });
 });
 
 /**

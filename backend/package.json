@@ -9,8 +9,9 @@
     "start": "node --enable-source-maps dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "paypal:check": "tsx --env-file-if-exists=.env scripts/check-paypal.ts",
-    "seed:transactions": "tsx scripts/seed-transactions.ts"
+    "seed:transactions": "tsx scripts/seed-transactions.ts",
+    "plaid:sandbox-banks": "tsx --env-file-if-exists=.env scripts/plaid-sandbox-banks.ts",
+    "sandbox:data": "tsx scripts/sandbox-data.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",

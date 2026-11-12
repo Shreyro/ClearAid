@@ -2,7 +2,10 @@ import { audit } from "@/lib/audit";
 import { getDb, mutate, newId, nowIso } from "@/lib/db";
 import { publish } from "@/lib/events";
 import { handle, json } from "@/lib/http";
+import { config, paypalPartnerLive } from "@/lib/config";
 import { checkCredentials, PayPalError } from "@/lib/paypal";
+import { merchantForTracking, merchantStatus, referralLink } from "@/lib/paypal-partner";
+import { paypalReconciliation } from "@/lib/transfers";
 import { DEFAULT_PAYPAL, findPayPalAccount, fundAccount, paypalAccountsOf, paypalAccountView } from "@/lib/paypal-accounts";
 import { encryptToken } from "@/lib/plaid";
 import { actorOf, HttpError, requireNgo, requireNgoAdmin } from "@/lib/session";
@@ -12,14 +15,24 @@ import type { PayPalAccount } from "@/lib/types";
 export const GET = handle(async () => {
   const me = await requireNgo();
   const db = getDb();
-  return json({ accounts: paypalAccountsOf(db, me.ngoId).map((a) => paypalAccountView(db, a)) });
+  // partner: NGOs can connect PayPal accounts by logging in to PayPal (ClearAid's partner app is set up).
+  // reconciliation: what each account collected, what left it, what reached the linked bank, and what's still in PayPal.
+  return json({
+    accounts: paypalAccountsOf(db, me.ngoId).map((a) => ({ ...paypalAccountView(db, a), reconciliation: paypalReconciliation(db, me.ngoId, a.id) })),
+    banks: db.bankAccounts.filter((b) => b.ngoId === me.ngoId && b.status === "active").map((b) => ({ id: b.id, name: b.name, transfersFrom: b.transfersFrom ?? [] })),
+    partner: paypalPartnerLive(),
+    env: config.paypal.env,
+  });
 });
 
 type Body =
   | { action: "create"; name?: string; email?: string; mode?: "live" | "simulated"; env?: "sandbox" | "live"; clientId?: string; clientSecret?: string; webhookId?: string }
   | { action: "update"; id: string; name?: string; email?: string; clientId?: string; clientSecret?: string; webhookId?: string }
   | { action: "disconnect" | "reconnect"; id: string }
-  | { action: "assign_fund"; fundId: string; accountId: string };
+  | { action: "assign_fund"; fundId: string; accountId: string }
+  /** Connect by logging in to PayPal: start (get the sign-up link), then finish (after PayPal sends the person back). */
+  | { action: "connect_start"; name?: string; email?: string }
+  | { action: "connect_finish"; id: string; merchantId?: string };
 
 const clean = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -76,6 +89,73 @@ export const POST = handle(async (req: Request) => {
     return json({ ok: true, account: paypalAccountView(getDb(), a) });
   }
 
+  if (b.action === "connect_start") {
+    if (!paypalPartnerLive()) throw new HttpError(400, "Connecting by logging in to PayPal needs ClearAid's PayPal partner app (PAYPAL_PARTNER_CLIENT_ID, PAYPAL_PARTNER_CLIENT_SECRET and PAYPAL_PARTNER_MERCHANT_ID on the server). Add the account with its API keys instead.");
+    const name = clean(b.name, 80);
+    if (!name) throw new HttpError(400, 'Name the account, e.g. "Appeals account"');
+    const email = clean(b.email, 120) || undefined;
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, "That email doesn't look right");
+    const acc = mutate((db) => {
+      if (paypalAccountsOf(db, admin.ngoId).some((x) => x.name.toLowerCase() === name.toLowerCase() && x.status !== "pending")) throw new HttpError(400, `There is already an account called "${name}"`);
+      // A sign-up left unfinished under the same name is replaced.
+      db.paypalAccounts = (db.paypalAccounts ?? []).filter((x) => !(x.ngoId === admin.ngoId && x.status === "pending" && x.name.toLowerCase() === name.toLowerCase()));
+      const a: PayPalAccount = { id: newId("pp"), ngoId: admin.ngoId, name, email, env: config.paypal.env, mode: "partner", status: "pending", onboarding: { startedAt: nowIso() }, createdAt: nowIso(), createdBy: admin.id };
+      db.paypalAccounts.push(a);
+      return a;
+    });
+    try {
+      // The tracking ID is the pending account's ID; PayPal sends it back as ?merchantId=, its own ID as ?merchantIdInPayPal=.
+      const actionUrl = await referralLink({ trackingId: acc.id, returnUrl: `${config.appUrl.replace(/\/$/, "")}/paypal/connected`, email });
+      return json({ ok: true, id: acc.id, actionUrl });
+    } catch (e) {
+      mutate((db) => {
+        db.paypalAccounts = (db.paypalAccounts ?? []).filter((x) => x.id !== acc.id);
+      });
+      throw new HttpError(502, `PayPal couldn't start the sign-up: ${(e as Error).message}`);
+    }
+  }
+
+  if (b.action === "connect_finish") {
+    if (!paypalPartnerLive()) throw new HttpError(400, "ClearAid's PayPal partner app isn't configured");
+    const acc0 = (getDb().paypalAccounts ?? []).find((x) => x.id === b.id && x.ngoId === admin.ngoId && x.mode === "partner");
+    if (!acc0) throw new HttpError(404, "That PayPal sign-up wasn't found. Start again from Sources.");
+    // What PayPal put on the return link is only a hint: ask PayPal which merchant finished this sign-up and what it granted.
+    const merchantId = clean(b.merchantId, 40) || (await merchantForTracking(acc0.id).catch(() => null));
+    if (!merchantId) throw new HttpError(400, "PayPal hasn't recorded a finished sign-up for this account yet. Finish it in the PayPal window, then try again.");
+    let st;
+    try {
+      st = await merchantStatus(merchantId);
+    } catch (e) {
+      throw new HttpError(502, `PayPal couldn't confirm the connection: ${(e as Error).message}`);
+    }
+    if (st.trackingId && st.trackingId !== acc0.id) throw new HttpError(400, "That PayPal login belongs to a different sign-up");
+    if (!st.granted) throw new HttpError(400, "ClearAid wasn't given permission on that PayPal account. Start again and agree to share access.");
+    const out = mutate((db) => {
+      if ((db.paypalAccounts ?? []).some((x) => x.id !== acc0.id && x.ngoId === admin.ngoId && x.mode === "partner" && x.merchantId === st.merchantId && x.status !== "disconnected")) {
+        throw new HttpError(409, "That PayPal account is already connected");
+      }
+      const acc = db.paypalAccounts!.find((x) => x.id === acc0.id)!;
+      const first = acc.status === "pending";
+      acc.merchantId = st.merchantId;
+      acc.email = st.email || acc.email;
+      acc.status = "active";
+      acc.onboarding = { ...(acc.onboarding ?? { startedAt: nowIso() }), finishedAt: nowIso(), paymentsReceivable: st.paymentsReceivable, emailConfirmed: st.emailConfirmed, permissions: st.permissions };
+      if (first) {
+        audit(db, {
+          actor,
+          action: "paypal.account_added",
+          targetId: acc.id,
+          summary: `Connected PayPal account "${acc.name}"${acc.email ? ` (${acc.email})` : ""} by logging in to PayPal: ClearAid may take payments and refund on its behalf${st.paymentsReceivable ? "" : " (PayPal says it can't receive payments yet)"}`,
+          meta: { mode: "partner", env: acc.env },
+        });
+      }
+      return acc;
+    });
+    publish({ kind: "bank" });
+    const warn = [!st.paymentsReceivable && "PayPal says this account can't receive payments yet (it may need to finish setting up with PayPal)", !st.emailConfirmed && "its email address isn't confirmed with PayPal yet"].filter(Boolean);
+    return json({ ok: true, account: paypalAccountView(getDb(), out), message: `"${out.name}" is connected${out.email ? ` (${out.email})` : ""}. Choose which funds pay into it under Settings → Funds.${warn.length ? ` Note: ${warn.join("; ")}.` : ""}` });
+  }
+
   if (b.action === "assign_fund") {
     const out = mutate((db) => {
       const fund = db.funds.find((f) => f.id === b.fundId && f.ngoId === admin.ngoId);
@@ -102,6 +182,7 @@ export const POST = handle(async (req: Request) => {
   if (b.action === "update") {
     const clientId = clean(b.clientId, 200);
     const clientSecret = clean(b.clientSecret, 200);
+    if ((clientId || clientSecret) && current.mode === "partner") throw new HttpError(400, "This account is connected by logging in to PayPal; it has no keys to replace.");
     if ((clientId || clientSecret) && current.mode !== "live") throw new HttpError(400, "A simulated account has no keys. Add a new live account instead.");
     if (clientId && !clientSecret) throw new HttpError(400, "Paste the secret that goes with the new client ID");
     if (clientSecret) await verifyKeys(current.env, clientId || current.clientId || "", clientSecret);
@@ -137,7 +218,8 @@ export const POST = handle(async (req: Request) => {
 
   const a = mutate((db) => {
     const acc = db.paypalAccounts!.find((x) => x.id === current.id)!;
-    acc.status = b.action === "disconnect" ? "disconnected" : "active";
+    // An account connected by login that never finished signing up stays pending when reconnected.
+    acc.status = b.action === "disconnect" ? "disconnected" : acc.mode === "partner" && !acc.merchantId ? "pending" : "active";
     const funds = db.funds.filter((f) => f.paypalAccountId === acc.id && f.status !== "closed").map((f) => f.title);
     audit(db, {
       actor,

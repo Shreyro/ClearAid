@@ -9,6 +9,7 @@ import { AnonymisedNote, CodeChip, SUBCODE_HINT } from "@/components/banking";
 import { api, useJson, useLive, usd } from "@/components/hooks";
 import { CAT_LABEL } from "@/components/SpendCard";
 import { Empty, Pill } from "@/components/ui";
+import { DataGrid } from "@/components/DataGrid";
 
 type Alloc = { fundId: string; fundTitle: string; amount: number; category?: string; code?: string };
 type Txn = {
@@ -24,7 +25,9 @@ type Txn = {
   anonymised: string[];
   reference?: string;
   isFee: boolean;
-  status: "auto_tagged" | "tagged" | "untagged" | "fee_unallocated" | "matched";
+  status: "auto_tagged" | "tagged" | "untagged" | "fee_unallocated" | "matched" | "transfer";
+  /** Money moved in from one of the NGO's own PayPal accounts (already counted; never on a fund). */
+  transfer?: { paypalAccountId: string; paypalAccountName: string; how: "rule" | "manual"; byName?: string; at: string } | null;
   payment?: { id: string; payee: string; date: string; byName: string; fundTitle: string; receiptUrl?: string };
   untaggedReason?: string;
   allocations: Alloc[];
@@ -65,6 +68,7 @@ const TABS = [
   ["pending", "Waiting for approval"],
   ["receipts", "Missing receipts"],
   ["fees", "Bank fees"],
+  ["transfers", "Transfers from PayPal"],
   ["tagged", "Tagged"],
   ["all", "All"],
 ] as const;
@@ -76,6 +80,7 @@ const STATUS: Record<Txn["status"], { label: string; tone: "good" | "warn" | "ne
   untagged: { label: "Needs a tag", tone: "warn" },
   fee_unallocated: { label: "Fee · general fund", tone: "neutral" },
   matched: { label: "Matched to a declared payment", tone: "good" },
+  transfer: { label: "Transfer from PayPal", tone: "neutral" },
 };
 
 export default function UntaggedPage() {
@@ -114,14 +119,12 @@ export default function UntaggedPage() {
     setSelected(new Set());
     await reload();
   };
-  const toggle = (id: string) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
   const rows = data?.transactions ?? [];
+  const openRow = open ? rows.find((r) => r.id === open) : undefined;
+  // Opening a line shows its panel above the queue; bring it into view.
+  useEffect(() => {
+    if (open) document.getElementById("untagged-open")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [open]);
   const taggable = data?.funds.filter((f) => f.canTag) ?? [];
 
   return (
@@ -198,38 +201,61 @@ export default function UntaggedPage() {
 
       {selected.size > 0 && <BulkBar ids={[...selected]} funds={taggable} onDone={done} onClear={() => setSelected(new Set())} />}
 
-      <div className="card overflow-x-auto">
+      {openRow && data && (
+        <section id="untagged-open" className="card p-4 mb-3 border-brand scroll-mt-4" aria-label="Selected bank line">
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-semibold">{openRow.amount < 0 ? "−" : "+"}{usd(Math.abs(openRow.amount))} · {openRow.description}</div>
+              <div className="text-xs text-muted">{openRow.accountName} · {openRow.date}</div>
+            </div>
+            <button type="button" className="p-1 text-muted hover:text-ink" onClick={() => setOpen(null)} aria-label="Close"><X className="h-4 w-4" /></button>
+          </div>
+          {((t) => (
+            <>
+                        {t.payment ? (
+                          <div className="text-sm pt-2">
+                            This is the bank side of the payment {t.payment.byName} declared to <span className="font-medium">{t.payment.payee}</span> on {t.payment.date}, already on <span className="font-medium">{t.payment.fundTitle}</span>, so it isn&apos;t posted again.
+                            {t.payment.receiptUrl && <> <a href={t.payment.receiptUrl} target="_blank" rel="noreferrer" className="underline">See the receipt</a>.</>} If it&apos;s the wrong line, unlink it under <Link href="/transactions" className="underline">Transactions → Declared payments</Link>.
+                          </div>
+                        ) : t.status === "transfer" ? (
+                          <TransferPanel t={t} isAdmin={me.role === "admin"} onDone={done} />
+                        ) : t.pending ? (
+                          <PendingPanel t={t} onDone={done} />
+                        ) : (
+                          <>
+                            <TagPanel t={t} funds={data.funds} isAdmin={me.role === "admin"} threshold={data.controls.tagApprovalThreshold} onDone={done} />
+                            {me.role === "admin" && t.amount > 0 && (t.status === "untagged" || t.status === "fee_unallocated") && <MarkTransfer t={t} onDone={done} />}
+                          </>
+                        )}
+                        <ReceiptsPanel
+                          t={t}
+                          onChanged={async (m) => {
+                            setMsg(m);
+                            await reload();
+                          }}
+                        />
+                      </>
+          ))(openRow)}
+        </section>
+      )}
+
+      <div className="card overflow-hidden">
         {!data ? (
           <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
         ) : rows.length === 0 ? (
           <Empty>{status === "untagged" ? "Nothing waiting. Every bank line has a fund." : status === "pending" ? "No tags are waiting for a second person." : status === "receipts" ? "Every payment above the threshold has a receipt." : "No transactions here."}</Empty>
         ) : (
-          <table className="w-full text-sm min-w-[860px]">
-            <thead>
-              <tr className="text-left text-xs text-muted border-b border-line">
-                <th className="pl-4 py-2.5 w-8">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    checked={rows.length > 0 && rows.every((r) => selected.has(r.id))}
-                    onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
-                  />
-                </th>
-                <th className="px-3 py-2.5 font-medium">Date</th>
-                <th className="px-3 py-2.5 font-medium">Description</th>
-                <th className="px-3 py-2.5 font-medium text-right">Amount</th>
-                <th className="px-3 py-2.5 font-medium">Fund</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
-                <th className="px-3 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((t) => (
-                <Fragment key={t.id}>
-                  <tr className={clsx("border-b border-line align-top", open === t.id && "bg-sunken")}>
-                    <td className="pl-4 py-3"><input type="checkbox" aria-label={`Select ${t.description}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} /></td>
-                    <td className="px-3 py-3 tnum whitespace-nowrap">{new Date(`${t.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}<div className="text-xs text-muted truncate max-w-[10rem]" title={t.accountName}>{t.accountName}</div></td>
-                    <td className="px-3 py-3 max-w-[28rem]">
+          <DataGrid
+            rows={rows}
+            rowId={(t) => t.id}
+            minWidth={860}
+            inCard
+            ariaLabel="Bank lines"
+            selection={{ selected, onChange: setSelected }}
+            rowClass={(t) => (open === t.id ? "ca-row-open" : undefined)}
+            cols={[
+              { header: "Date", width: 130, wrap: true, value: (t) => t.date, render: (t) => <div className="tnum">{new Date(`${t.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}<div className="text-xs text-muted truncate max-w-[10rem]" title={t.accountName}>{t.accountName}</div></div> },
+              { header: "Description", flex: 2, minWidth: 240, wrap: true, value: (t) => t.description, render: (t) => <div>
                       <div className="font-medium break-words">{t.description}</div>
                       <div className="text-xs text-muted">
                         {[t.counterparty, t.reference && <span key="r" className="font-mono">{t.reference}</span>].filter(Boolean).map((x, i) => <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>)}
@@ -249,9 +275,9 @@ export default function UntaggedPage() {
                           {t.receipts.some((r) => r.codeMismatch) && <span className="text-critical"> · code on receipt differs</span>}
                         </div>
                       )}
-                    </td>
-                    <td className={clsx("px-3 py-3 text-right tnum font-semibold whitespace-nowrap", t.amount < 0 ? "text-out-ink" : "text-good-ink")}>{t.amount < 0 ? "−" : "+"}{usd(Math.abs(t.amount))}</td>
-                    <td className="px-3 py-3">
+                    </div> },
+              { header: "Amount", width: 110, align: "right", value: (t) => t.amount, render: (t) => <span className={clsx("font-semibold", t.amount < 0 ? "text-out-ink" : "text-good-ink")}>{t.amount < 0 ? "−" : "+"}{usd(Math.abs(t.amount))}</span> },
+              { header: "Fund", width: 190, wrap: true, value: (t) => t.allocations.map((a) => a.fundTitle).join(", "), render: (t) => <div>
                       {t.allocations.length ? (
                         <ul className="space-y-0.5">
                           {t.allocations.map((a, i) => (
@@ -265,39 +291,17 @@ export default function UntaggedPage() {
                       ) : (
                         <span className="text-xs text-muted">{t.payment ? t.payment.fundTitle : t.isFee ? "General fund" : "—"}</span>
                       )}
-                    </td>
-                    <td className="px-3 py-3">
+                    </div> },
+              { header: "Status", width: 165, value: (t) => (t.pending ? "pending" : t.status), render: (t) => <>
                       {t.pending ? <Pill tone="warn">Waiting for approval</Pill> : t.tagSource === "fee_policy" ? <Pill tone="neutral">Fee policy</Pill> : <Pill tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Pill>}
-                    </td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                    </> },
+              { header: "", width: 115, align: "right", sortable: false, render: (t) => <>
                       <button className={clsx("btn !py-1 text-xs", t.pending?.canApprove || (!t.allocations.length && !t.pending && !t.payment) ? "btn-primary" : "btn-ghost")} onClick={() => setOpen(open === t.id ? null : t.id)}>
                         {open === t.id ? <X className="h-3.5 w-3.5" /> : t.pending ? <Clock className="h-3.5 w-3.5" /> : <Tag className="h-3.5 w-3.5" />} {t.pending ? (t.pending.canApprove ? "Review" : "Pending") : t.allocations.length || t.payment ? "Details" : "Tag"}
                       </button>
-                    </td>
-                  </tr>
-                  {open === t.id && (
-                    <tr className="border-b border-line bg-sunken">
-                      <td colSpan={7} className="px-4 pb-4">
-                        {t.payment ? (
-                          <div className="text-sm pt-2">
-                            This is the bank side of the payment {t.payment.byName} declared to <span className="font-medium">{t.payment.payee}</span> on {t.payment.date}, already on <span className="font-medium">{t.payment.fundTitle}</span>, so it isn&apos;t posted again.
-                            {t.payment.receiptUrl && <> <a href={t.payment.receiptUrl} target="_blank" rel="noreferrer" className="underline">See the receipt</a>.</>} If it&apos;s the wrong line, unlink it under <Link href="/transactions" className="underline">Transactions → Declared payments</Link>.
-                          </div>
-                        ) : t.pending ? <PendingPanel t={t} onDone={done} /> : <TagPanel t={t} funds={data.funds} isAdmin={me.role === "admin"} threshold={data.controls.tagApprovalThreshold} onDone={done} />}
-                        <ReceiptsPanel
-                          t={t}
-                          onChanged={async (m) => {
-                            setMsg(m);
-                            await reload();
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
+                    </> },
+            ]}
+          />
         )}
       </div>
     </Page>
@@ -305,6 +309,70 @@ export default function UntaggedPage() {
 }
 
 type Row = { fundId: string; category: string; amount: string };
+
+/** A deposit that is one of the NGO's PayPal accounts withdrawing to the bank. */
+function TransferPanel({ t, isAdmin, onDone }: { t: Txn; isAdmin: boolean; onDone: (m: string) => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function notTransfer() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await onDone((await api<{ message: string }>("/api/bank/transactions", { json: { action: "not_transfer", id: t.id } })).message);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="pt-2 text-sm space-y-2">
+      <p>
+        Money moved in from your PayPal account <span className="font-medium">{t.transfer?.paypalAccountName ?? "PayPal"}</span>
+        {t.transfer?.how === "manual" ? ` (marked by ${t.transfer.byName ?? "an admin"})` : " (recognised from the bank's wording)"}. ClearAid counted this money when the PayPal gifts came in, so it isn&apos;t put on a fund again.
+      </p>
+      {isAdmin && (
+        <button type="button" className="btn btn-ghost !py-1 text-xs" disabled={busy} onClick={notTransfer}>
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Not a transfer: tag it to a fund instead
+        </button>
+      )}
+      {err && <p className="text-xs text-critical">{err}</p>}
+    </div>
+  );
+}
+
+/** Admins: say a deposit is a PayPal account's balance reaching the bank. */
+function MarkTransfer({ t, onDone }: { t: Txn; onDone: (m: string) => Promise<void> }) {
+  const { data } = useJson<{ accounts: { id: string; name: string; status: string }[] }>("/api/paypal/accounts");
+  const [pp, setPp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const options = data?.accounts.filter((a) => a.status !== "pending") ?? [];
+  async function mark() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await onDone((await api<{ message: string }>("/api/bank/transactions", { json: { action: "mark_transfer", id: t.id, paypalAccountId: pp || options[0]?.id } })).message);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!options.length) return null;
+  return (
+    <div className="mt-3 pt-3 border-t border-line flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-ink-2">Or, if this is your own PayPal balance arriving in the bank:</span>
+      <select className="input !w-auto !py-1 text-sm" value={pp || options[0]?.id} onChange={(e) => setPp(e.target.value)} aria-label="Which PayPal account it came from">
+        {options.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      <button type="button" className="btn btn-ghost !py-1 text-xs" disabled={busy} onClick={mark}>
+        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Mark as a transfer from PayPal
+      </button>
+      {err && <p className="w-full text-xs text-critical">{err}</p>}
+    </div>
+  );
+}
 
 function TagPanel({ t, funds, isAdmin, threshold, onDone }: { t: Txn; funds: FundOpt[]; isAdmin: boolean; threshold: number; onDone: (m: string) => Promise<void> }) {
   const total = Math.abs(t.amount);
@@ -561,7 +629,7 @@ function ReceiptsPanel({ t, onChanged }: { t: Txn; onChanged: (m: string) => Pro
       </div>
       {t.receipts.length === 0 ? (
         <p className="text-xs text-muted mt-1">
-          Attach the invoice or bill behind this {t.amount < 0 ? "payment" : "receipt"} (image or PDF, up to 8 MB). It's read on this machine (OCR, then the local AI model), and a fixed rule checks it against the amount, date and payee. It never changes the tag.
+          Attach the invoice or bill behind this {t.amount < 0 ? "payment" : "receipt"} (image or PDF, up to 8 MB). It&apos;s read on this machine (OCR, then the local AI model), and a fixed rule checks it against the amount, date and payee. It never changes the tag.
         </p>
       ) : (
         <ul className="mt-2 grid md:grid-cols-2 gap-2">

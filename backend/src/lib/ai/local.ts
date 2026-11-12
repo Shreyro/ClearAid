@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
+import { wakeAi } from "../ai-power";
 import { config } from "../config";
 import { uploadsDir } from "../db";
 import type { StoredFile } from "../types";
@@ -59,6 +60,7 @@ export function imageOf(f: StoredFile): string | null {
 type Chat = { message?: { content?: string }; error?: string };
 
 async function chat(model: string, body: Record<string, unknown>, timeoutMs: number): Promise<string> {
+  void wakeAi();
   let res: Response;
   try {
     res = await fetch(`${L.ollamaUrl}/api/chat`, {

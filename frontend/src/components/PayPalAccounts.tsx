@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, Copy, CreditCard, KeyRound, Loader2, Pencil, Plus, Unplug, X } from "lucide-react";
+import { Check, Copy, CreditCard, KeyRound, Loader2, LogIn, Pencil, Plus, Unplug, X } from "lucide-react";
 import clsx from "clsx";
 import { api, ago, useJson, useLive, usd } from "./hooks";
 import { Pill } from "./ui";
@@ -12,23 +12,29 @@ export type PayPalAccount = {
   name: string;
   email?: string;
   env: "sandbox" | "live";
-  mode: "live" | "simulated";
+  /** "partner": connected by logging in to PayPal (no keys stored). */
+  mode: "live" | "partner" | "simulated";
+  merchantId?: string | null;
+  onboarding?: { startedAt: string; finishedAt?: string; paymentsReceivable?: boolean; emailConfirmed?: boolean } | null;
   live: boolean;
   builtin: boolean;
   clientId: string | null;
   webhooks: boolean;
   webhookUrl: string;
-  status: "active" | "disconnected";
+  status: "active" | "disconnected" | "pending";
   createdAt: string | null;
   funds: { id: string; title: string; slug: string }[];
   received: number;
   refunded: number;
   gifts: number;
+  /** Collected, what left it from ClearAid, what reached the linked bank, and what's still in PayPal (cents). */
+  reconciliation?: { collected: number; refunded: number; paidOut: number; toBank: number; transfers: number; lastTransfer: string | null; stillInPayPal: number; banks: { id: string; name: string }[]; warning?: string };
 };
 
 /** The NGO's PayPal accounts: what each collected, which funds pay into it, and (admins) adding and managing them. */
 export function PayPalAccounts({ isAdmin }: { isAdmin: boolean }) {
-  const { data, reload } = useJson<{ accounts: PayPalAccount[] }>("/api/paypal/accounts");
+  const { data, reload } = useJson<{ accounts: PayPalAccount[]; partner?: boolean; env?: string }>("/api/paypal/accounts");
+  const [connecting, setConnecting] = useState(false);
   useLive(undefined, (e) => {
     if (e.kind === "bank" || e.kind === "fund" || e.kind === "ledger") void reload();
   });
@@ -44,15 +50,23 @@ export function PayPalAccounts({ isAdmin }: { isAdmin: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2 className="text-lg font-semibold">PayPal accounts {data && <span className="text-muted font-normal text-base">({data.accounts.length})</span>}</h2>
         {isAdmin && (
-          <button className="btn btn-ghost" onClick={() => setAdding((a) => !a)}>
-            {adding ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} PayPal account
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {data?.partner && (
+              <button className="btn btn-primary" onClick={() => { setConnecting((c) => !c); setAdding(false); }}>
+                {connecting ? <X className="h-4 w-4" /> : <LogIn className="h-4 w-4" />} Connect with PayPal
+              </button>
+            )}
+            <button className="btn btn-ghost" onClick={() => { setAdding((a) => !a); setConnecting(false); }} title="Add an account with its own REST app keys, or a simulated one">
+              {adding ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} {data?.partner ? "Add with API keys" : "PayPal account"}
+            </button>
+          </div>
         )}
       </div>
       <p className="text-sm text-ink-2 mb-4 max-w-3xl">
         Each fund&apos;s donation link pays into one PayPal account, so you can keep appeals or offices apart. Refunds and webhooks go through the account the gift landed in.
         {isAdmin && <> Choose a fund&apos;s account under <Link href="/settings?tab=funds" className="underline">Settings → Funds</Link>.</>}
       </p>
+      {connecting && <ConnectWithPayPal env={data?.env ?? "sandbox"} onError={(text) => setMsg({ text, bad: true })} />}
       {adding && <AddPayPalAccount onDone={(m) => { setAdding(false); done(m); }} />}
       {msg && <div role="status" className={clsx("card p-3 text-sm mb-4", msg.bad ? "bg-bad-wash border-bad-line text-bad-ink" : "bg-brand-wash border-brand-line")}>{msg.text}</div>}
       {!data ? (
@@ -71,11 +85,23 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const active = a.status === "active";
+  const pending = a.status === "pending";
+
+  async function finish() {
+    setBusy(true);
+    try {
+      onDone((await api<{ message: string }>("/api/paypal/accounts", { json: { action: "connect_finish", id: a.id } })).message);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function toggle() {
     setBusy(true);
     try {
-      await api("/api/paypal/accounts", { json: { action: active ? "disconnect" : "reconnect", id: a.id } });
+      await api("/api/paypal/accounts", { json: { action: active || pending ? "disconnect" : "reconnect", id: a.id } });
       onDone(active ? `${a.name} disconnected. Gifts already recorded are kept${a.funds.length ? `; new gifts to ${a.funds.map((f) => f.title).join(", ")} go to the main account until you reconnect it` : ""}.` : `${a.name} reconnected.`);
     } catch (e) {
       onError((e as Error).message);
@@ -93,8 +119,11 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
             <h3 className="font-semibold truncate">{a.name}</h3>
             <div className="text-xs text-muted flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
               {a.builtin && <Pill>Main</Pill>}
-              {a.live ? <Pill tone="info">PayPal {a.env}</Pill> : a.mode === "live" ? <Pill tone="bad">Keys not working</Pill> : <Pill tone="warn">Simulated</Pill>}
-              {!active && <Pill tone="bad">Disconnected</Pill>}
+              {a.live ? <Pill tone="info">PayPal {a.env}</Pill> : a.mode === "live" ? <Pill tone="bad">Keys not working</Pill> : a.mode === "partner" ? null : <Pill tone="warn">Simulated</Pill>}
+              {a.mode === "partner" && <Pill tone="brand">Connected by login</Pill>}
+              {pending && <Pill tone="warn">Sign-up not finished</Pill>}
+              {a.status === "disconnected" && <Pill tone="bad">Disconnected</Pill>}
+              {a.mode === "partner" && a.onboarding?.finishedAt && a.onboarding.paymentsReceivable === false && <Pill tone="warn">Can&apos;t receive payments yet</Pill>}
               {a.email && <span className="truncate">{a.email}</span>}
               {a.clientId && <span className="font-mono">{a.clientId}</span>}
               {a.createdAt && <span>added {ago(a.createdAt)}</span>}
@@ -103,9 +132,14 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
         </div>
         {isAdmin && !a.builtin && (
           <div className="flex gap-1 shrink-0">
+            {pending && (
+              <button className="btn btn-primary !py-1 text-xs" disabled={busy} onClick={finish} title="Check with PayPal whether the login was finished">
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />} Finish connecting
+              </button>
+            )}
             <button className="btn btn-ghost !py-1 text-xs" onClick={() => setEditing((e) => !e)} aria-expanded={editing}><Pencil className="h-3.5 w-3.5" /> Edit</button>
             <button className="btn btn-ghost !py-1 text-xs" disabled={busy} onClick={toggle}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unplug className="h-3.5 w-3.5" />} {active ? "Disconnect" : "Reconnect"}
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unplug className="h-3.5 w-3.5" />} {active || pending ? "Disconnect" : "Reconnect"}
             </button>
           </div>
         )}
@@ -116,6 +150,21 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
         <Mini label="Refunded" value={usd(a.refunded)} />
         <Mini label="Gifts" value={String(a.gifts)} href={a.gifts ? `/transactions?account=paypal:${a.id}` : undefined} />
       </div>
+
+      {a.reconciliation && (active || a.reconciliation.collected > 0) && (
+        <div className="rounded-lg border border-line px-3 py-2 text-xs space-y-1.5">
+          <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">
+            <span className="text-ink-2">Collected <b className="text-ink tnum">{usd(a.reconciliation.collected)}</b></span>
+            {a.reconciliation.refunded + a.reconciliation.paidOut > 0 && <span className="text-ink-2">Refunds and payouts <b className="text-ink tnum">{usd(a.reconciliation.refunded + a.reconciliation.paidOut)}</b></span>}
+            <span className="text-ink-2">Moved to the bank <b className="text-ink tnum">{usd(a.reconciliation.toBank)}</b>{a.reconciliation.transfers ? ` (${a.reconciliation.transfers})` : ""}</span>
+            <span className="text-ink-2">Still in PayPal <b className={clsx("tnum", a.reconciliation.stillInPayPal < 0 ? "text-critical" : "text-ink")}>{usd(a.reconciliation.stillInPayPal)}</b></span>
+          </div>
+          <div className="text-muted">
+            {a.reconciliation.banks.length ? <>Withdraws to {a.reconciliation.banks.map((b) => b.name).join(", ")}.</> : <>Not linked to a bank account yet: link it on the bank account&apos;s card below (PayPal link).</>} &ldquo;Still in PayPal&rdquo; is before PayPal&apos;s own fees.
+          </div>
+          {a.reconciliation.warning && <div className="text-critical">{a.reconciliation.warning}</div>}
+        </div>
+      )}
 
       <div>
         <div className="text-xs uppercase tracking-wide text-muted font-semibold mb-1.5">Donation links paying in</div>
@@ -138,6 +187,13 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
           </button>
         </div>
       )}
+      {a.mode === "partner" && (
+        <p className="text-xs text-ink-2">
+          {pending
+            ? "Waiting for someone to finish logging in to PayPal. If they already did, press Finish connecting."
+            : <>Gifts go straight into this PayPal account{a.merchantId ? <> (merchant <span className="font-mono">{a.merchantId}</span>)</> : null}. ClearAid can take payments and refund them for it; payouts from it are made in PayPal itself. Webhooks come through ClearAid&apos;s partner app.</>}
+        </p>
+      )}
       {a.builtin && isAdmin && (
         <p className="text-xs text-muted">Set on the server ({a.live ? "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET" : "add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to make it live"}). Funds use it unless you choose another account.</p>
       )}
@@ -155,6 +211,44 @@ function Mini({ label, value, href }: { label: string; value: string; href?: str
     </>
   );
   return href ? <Link href={href} className="rounded-lg bg-page px-3 py-2 hover:bg-hover">{body}</Link> : <div className="rounded-lg bg-page px-3 py-2">{body}</div>;
+}
+
+/**
+ * Connect an NGO's PayPal account by logging in to PayPal: ClearAid gets a
+ * sign-up link from PayPal, the person logs in (or creates a business account)
+ * and agrees, and PayPal sends them back to /paypal/connected.
+ */
+function ConnectWithPayPal({ env, onError }: { env: string; onError: (m: string) => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function start(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const r = await api<{ actionUrl: string }>("/api/paypal/accounts", { json: { action: "connect_start", name, email: email || undefined } });
+      window.location.href = r.actionUrl;
+    } catch (err) {
+      onError((err as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <form onSubmit={start} className="card p-4 mb-4 grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+      <div>
+        <label className="label" htmlFor="ppc-name">Name in ClearAid</label>
+        <input id="ppc-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Appeals account" required maxLength={80} />
+      </div>
+      <div>
+        <label className="label" htmlFor="ppc-email">PayPal email (optional)</label>
+        <input id="ppc-email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Pre-fills PayPal's login" />
+      </div>
+      <button className="btn btn-primary" disabled={busy || !name.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} Continue to PayPal</button>
+      <p className="sm:col-span-3 text-xs text-ink-2">
+        You&apos;ll log in to PayPal{env === "sandbox" ? " (sandbox: use a sandbox business account)" : ""} and allow ClearAid to take payments and refund them for that account. No password or keys are shared with ClearAid. Connect as many PayPal accounts as you need, one at a time.
+      </p>
+    </form>
+  );
 }
 
 function AddPayPalAccount({ onDone }: { onDone: (msg: string) => void }) {

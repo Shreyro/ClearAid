@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { FileUp, Landmark, Link2, Loader2, PenLine, Plus, RefreshCw, Settings2, Unplug, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, FileUp, KeyRound, Landmark, Link2, Loader2, PenLine, Plus, RefreshCw, Settings2, Unplug, X } from "lucide-react";
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
 import { AnonymisedNote } from "@/components/banking";
 import { ago, api, useJson, useLive, usd } from "@/components/hooks";
 import { Empty, Pill } from "@/components/ui";
 import { PayPalAccounts } from "@/components/PayPalAccounts";
+import { openPlaidLink } from "@/components/plaidLink";
+import { DataGrid } from "@/components/DataGrid";
 
 type Mapping = { date?: string; description?: string; amount?: string; debit?: string; credit?: string; reference?: string; counterparty?: string; type?: string; dateFormat: "ymd" | "dmy" | "mdy" };
 type Account = {
@@ -23,29 +25,16 @@ type Account = {
   feePatterns: string[];
   simulated: boolean;
   subAccounts: { name: string; mask?: string }[];
-  counts: { total: number; untagged: number; fees: number; tagged: number };
+  health: { status: "ok" | "reconnect" | "error"; reason?: string; at: string } | null;
+  sameLogin: string[];
+  /** PayPal accounts whose withdrawals land here (their deposits are transfers). */
+  transfersFrom: { id: string; name: string }[];
+  counts: { total: number; untagged: number; fees: number; tagged: number; transfers: number };
   moneyIn: number;
   moneyOut: number;
   imports: { id: string; source: string; fileName?: string; rows: number; imported: number; duplicates: number; autoTagged: number; anonymised: number; errors: string[]; createdAt: string; by: string }[];
 };
-type Resp = { accounts: Account[]; plaid: { live: boolean } };
-
-declare global {
-  interface Window {
-    Plaid?: { create: (o: { token: string; onSuccess: (publicToken: string, meta: { institution?: { name?: string } | null }) => void; onExit?: (err: unknown) => void }) => { open: () => void } };
-  }
-}
-
-function loadPlaidScript() {
-  return new Promise<void>((resolve, reject) => {
-    if (window.Plaid) return resolve();
-    const s = document.createElement("script");
-    s.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Couldn't load Plaid Link"));
-    document.head.appendChild(s);
-  });
-}
+type Resp = { accounts: Account[]; plaid: { live: boolean; env?: string; oauth?: boolean; webhooks?: boolean; autoSyncMinutes?: number } };
 
 export default function SourcesPage() {
   const { me } = useMe();
@@ -73,21 +62,10 @@ export default function SourcesPage() {
   }
 
   async function connectPlaid() {
-    await run("plaid", async () => {
-      const { linkToken } = await api<{ linkToken: string }>("/api/bank/plaid", { json: { action: "link_token" } });
-      await loadPlaidScript();
-      const connected = await new Promise<boolean>((resolve, reject) => {
-        window.Plaid!.create({
-          token: linkToken,
-          onSuccess: (publicToken, meta) => {
-            api("/api/bank/plaid", { json: { action: "exchange", publicToken, institution: meta.institution?.name } }).then(() => resolve(true), reject);
-          },
-          onExit: () => resolve(false),
-        }).open();
-      });
-      return connected ? "Bank connected. Press Sync to pull its transactions (Plaid may take a minute to prepare them)." : undefined;
-    });
+    await run("plaid", async () => (await openPlaidLink({ mode: "new" })) ?? undefined);
   }
+  const connected = data?.accounts.filter((a) => a.provider === "plaid" && a.status === "active") ?? [];
+  const needLogin = connected.filter((a) => a.health?.status === "reconnect");
 
   return (
     <Page
@@ -96,6 +74,11 @@ export default function SourcesPage() {
       actions={
         isAdmin ? (
           <>
+            {connected.length > 0 && (
+              <button className="btn btn-ghost" disabled={Boolean(busy)} onClick={() => run("syncall", async () => (await api<{ message: string }>("/api/bank/plaid", { json: { action: "sync_all" } })).message)}>
+                {busy === "syncall" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sync all banks
+              </button>
+            )}
             <button className="btn btn-ghost" onClick={() => setAdding((a) => !a)}>{adding ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Bank account (CSV)</button>
             {data?.plaid.live ? (
               <button className="btn btn-primary" onClick={connectPlaid} disabled={Boolean(busy)}>{busy === "plaid" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} Connect with Plaid</button>
@@ -115,6 +98,18 @@ export default function SourcesPage() {
     >
       {adding && <AddCsvAccount onDone={(m) => { setAdding(false); setMsg({ text: m }); void reload(); }} />}
       {msg && <div role="status" className={clsx("card p-3 text-sm mb-4", msg.bad ? "bg-bad-wash border-bad-line text-bad-ink" : "bg-brand-wash border-brand-line")}>{msg.text}</div>}
+      {needLogin.length > 0 && (
+        <div role="alert" className="card p-3 text-sm mb-4 bg-warn-wash border-warn-line flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warn-ink" />
+          <span>{[...new Set(needLogin.map((a) => a.institution))].join(", ")} need{needLogin.length === 1 ? "s" : ""} someone to log in to the bank again before more transactions can arrive.{isAdmin ? " Press “Log in again” on the account." : " Ask an admin."}</span>
+        </div>
+      )}
+      {data?.plaid.live && (
+        <p className="text-xs text-muted mb-4">
+          Plaid ({data.plaid.env ?? "sandbox"}): new transactions arrive {data.plaid.webhooks ? "as soon as Plaid has them" : "when someone syncs"}{data.plaid.autoSyncMinutes ? `, and every connected bank is checked every ${data.plaid.autoSyncMinutes} min` : ""}.
+          {isAdmin && !data.plaid.oauth && " Banks that log in on their own website (e.g. Chase) need PLAID_REDIRECT_URI set on the backend."}
+        </p>
+      )}
       {data && !data.plaid.live && isAdmin && (
         <p className="text-xs text-muted mb-4">Plaid isn&apos;t configured (set <span className="font-mono">PLAID_CLIENT_ID</span> and <span className="font-mono">PLAID_SECRET</span> on the backend for sandbox). Until then, &ldquo;Connect bank&rdquo; adds a simulated feed.</p>
       )}
@@ -181,9 +176,49 @@ function OtherSources() {
   );
 }
 
+/** Admins: choose the PayPal accounts whose balance is withdrawn into this bank account. */
+function PayPalLink({ a, onDone }: { a: Account; onDone: (message: string) => void }) {
+  const { data } = useJson<{ accounts: { id: string; name: string; status: string }[] }>("/api/paypal/accounts");
+  const [picked, setPicked] = useState<Set<string>>(new Set(a.transfersFrom.map((p) => p.id)));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const options = data?.accounts.filter((p) => p.status !== "pending") ?? [];
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api<{ message?: string }>("/api/bank/accounts", { json: { action: "update", id: a.id, transfersFrom: [...picked] } });
+      onDone(r.message ?? "Saved.");
+    } catch (e) {
+      setErr((e as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-line p-3 space-y-2">
+      <p className="text-sm">Which PayPal accounts withdraw their balance into <span className="font-medium">{a.name}</span>? Deposits from them that read like a PayPal transfer are kept off every fund, because ClearAid already counted that money when the gifts came in.</p>
+      {!data ? <Loader2 className="h-4 w-4 animate-spin text-muted" /> : (
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {options.map((p) => (
+            <label key={p.id} className="inline-flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={picked.has(p.id)} onChange={(e) => setPicked((s) => { const n = new Set(s); if (e.target.checked) n.add(p.id); else n.delete(p.id); return n; })} />
+              {p.name}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <button type="button" className="btn btn-primary !py-1.5 text-sm" disabled={busy || !data} onClick={save}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Save link</button>
+        {err && <span className="text-xs text-critical">{err}</span>}
+      </div>
+    </div>
+  );
+}
+
 function AccountCard({ a, isAdmin, busy, run }: { a: Account; isAdmin: boolean; busy: string | null; run: (key: string, fn: () => Promise<string | void>) => Promise<void> }) {
   const [uploading, setUploading] = useState(false);
   const [fees, setFees] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
   const active = a.status === "active";
   return (
     <section className={clsx("card p-5", !active && "opacity-70")}>
@@ -196,6 +231,8 @@ function AccountCard({ a, isAdmin, busy, run }: { a: Account; isAdmin: boolean; 
               <span>{a.institution}</span>
               {a.provider === "csv" ? <Pill>CSV upload</Pill> : a.simulated ? <Pill tone="warn">Simulated feed</Pill> : <Pill tone="info">Plaid</Pill>}
               {!active && <Pill tone="bad">Disconnected</Pill>}
+              {active && a.health?.status === "reconnect" && <Pill tone="warn">Log in again</Pill>}
+              {active && a.health?.status === "error" && <Pill tone="bad">Sync error</Pill>}
               <span>{a.lastSyncAt ? `Last ${a.provider === "csv" ? "upload" : "sync"} ${ago(a.lastSyncAt)}` : "Nothing imported yet"}</span>
             </div>
           </div>
@@ -213,6 +250,21 @@ function AccountCard({ a, isAdmin, busy, run }: { a: Account; isAdmin: boolean; 
               {busy === `sync:${a.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sync now
             </button>
           )}
+          {isAdmin && active && a.provider === "plaid" && !a.simulated && (
+            <button
+              className={clsx("btn !py-1.5 text-sm", a.health?.status === "reconnect" ? "btn-primary" : "btn-ghost")}
+              disabled={Boolean(busy)}
+              title="Log in to this bank again through Plaid (when its login has expired, or to share more accounts). Its history is kept."
+              onClick={() => run(`relink:${a.id}`, async () => (await openPlaidLink({ mode: "update", accountId: a.id })) ?? undefined)}
+            >
+              {busy === `relink:${a.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Log in again
+            </button>
+          )}
+          {isAdmin && active && (
+            <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => setLinking((l) => !l)} aria-expanded={linking} title="Which PayPal accounts withdraw their balance into this bank account">
+              <ArrowLeftRight className="h-4 w-4" /> PayPal link
+            </button>
+          )}
           {isAdmin && (
             <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => setFees((f) => (f === null ? a.feePatterns.join(", ") : null))}><Settings2 className="h-4 w-4" /> Fee rules</button>
           )}
@@ -227,6 +279,18 @@ function AccountCard({ a, isAdmin, busy, run }: { a: Account; isAdmin: boolean; 
           )}
         </div>
       </div>
+
+      {active && a.health && a.health.status !== "ok" && a.health.reason && <p className={clsx("text-xs mt-3", a.health.status === "reconnect" ? "text-warn-ink" : "text-critical")}>{a.health.reason}</p>}
+      {a.sameLogin.length > 0 && <p className="text-xs text-muted mt-2">Same bank login as {a.sameLogin.join(", ")}: they sync together.</p>}
+      <p className="text-xs text-ink-2 mt-2 flex items-center gap-1.5">
+        <ArrowLeftRight className="h-3.5 w-3.5 text-muted" aria-hidden />
+        {a.transfersFrom.length ? (
+          <span>Receives withdrawals from {a.transfersFrom.map((p) => p.name).join(", ")}: {a.counts.transfers} transfer{a.counts.transfers === 1 ? "" : "s"} so far, never counted as new money{a.counts.transfers ? <> (<Link className="underline" href={`/untagged?status=transfers&account=${a.id}`}>see them</Link>)</> : null}.</span>
+        ) : (
+          <span>Not linked to a PayPal account{a.counts.transfers ? ` (${a.counts.transfers} line${a.counts.transfers === 1 ? "" : "s"} marked as transfers by hand)` : ""}.</span>
+        )}
+      </p>
+      {linking && <PayPalLink a={a} onDone={(m) => { setLinking(false); void run(`link:${a.id}`, async () => m); }} />}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
         <Mini label="Money in" value={usd(a.moneyIn)} tone="text-good-ink" />
@@ -451,19 +515,18 @@ function Uploader({ account, onDone }: { account: Account; onDone: (msg: string)
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs min-w-[560px]">
-                  <thead><tr className="text-left text-muted border-b border-line"><th className="py-1.5 pr-3 font-medium">Date</th><th className="py-1.5 pr-3 font-medium text-right">Amount</th><th className="py-1.5 pr-3 font-medium">Description</th><th className="py-1.5 font-medium">Reference</th></tr></thead>
-                  <tbody>
-                    {preview.parsed.map((r, i) => (
-                      <tr key={i} className="border-b border-line last:border-0">
-                        <td className="py-1.5 pr-3 tnum whitespace-nowrap">{r.date}</td>
-                        <td className={clsx("py-1.5 pr-3 tnum text-right font-semibold whitespace-nowrap", r.amount < 0 ? "text-out-ink" : "text-good-ink")}>{r.amount < 0 ? "−" : "+"}{usd(Math.abs(r.amount))}</td>
-                        <td className="py-1.5 pr-3">{r.description}{r.anonymised.length > 0 && <span className="ml-2"><AnonymisedNote kinds={r.anonymised} short /></span>}</td>
-                        <td className="py-1.5 font-mono">{r.reference}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataGrid
+                  rows={preview.parsed}
+                  minWidth={560}
+                  inCard={false}
+                  ariaLabel="Statement lines found"
+                  cols={[
+                    { header: "Date", width: 115, value: (r) => r.date },
+                    { header: "Amount", width: 120, align: "right", value: (r) => r.amount, render: (r) => <span className={clsx("font-semibold", r.amount < 0 ? "text-out-ink" : "text-good-ink")}>{r.amount < 0 ? "−" : "+"}{usd(Math.abs(r.amount))}</span> },
+                    { header: "Description", flex: 1, minWidth: 220, wrap: true, value: (r) => r.description, render: (r) => <span>{r.description}{r.anonymised.length > 0 && <span className="ml-2"><AnonymisedNote kinds={r.anonymised} short /></span>}</span> },
+                    { header: "Reference", width: 160, value: (r) => r.reference, render: (r) => <span className="font-mono">{r.reference}</span> },
+                  ]}
+                />
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <button className="btn btn-primary" onClick={doImport} disabled={busy || preview.validCount === 0}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Import {preview.validCount} rows</button>

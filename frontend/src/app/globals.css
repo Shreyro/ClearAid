@@ -303,3 +303,6 @@ html:has(.embed-root) body {
     scroll-behavior: auto !important;
   }
 }
+
+/* The bank line whose panel is open on Untagged. */
+.ag-row.ca-row-open { background-color: var(--sunken); }

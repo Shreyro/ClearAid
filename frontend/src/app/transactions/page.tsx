@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
-import { Download, Loader2, Minus, Plus, X } from "lucide-react";
+import { Download, Loader2, Minus, Paperclip, Plus, Send, Tag, X } from "lucide-react";
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
 import { api, useJson, useLive, usd } from "@/components/hooks";
 import { gridTheme } from "@/components/LedgerGrid";
 import { DeclaredPayments, RecordPayment } from "@/components/RecordPayment";
+import { PayPalPayout } from "@/components/PayPalPayout";
+import { EntryPanel, TagChip, TagManager, type DocRef, type TagRef } from "@/components/EntryPanel";
 
 type Tx = {
   id: string;
@@ -31,8 +33,12 @@ type Tx = {
   ref?: string;
   paypalRef?: string;
   hash: string;
+  /** Staff only: the team's tags, documents added later, and whether money out has its paperwork. */
+  tags?: TagRef[];
+  docs?: DocRef[];
+  hasDocument?: boolean;
 };
-type Resp = { transactions: Tx[]; totals: { in: number; out: number; count: number }; funds: { id: string; title: string }[]; accounts?: { key: string; name: string; kind: "paypal" | "bank" }[] };
+type Resp = { transactions: Tx[]; totals: { in: number; out: number; count: number }; funds: { id: string; title: string }[]; accounts?: { key: string; name: string; kind: "paypal" | "bank" }[]; tags?: TagRef[] };
 
 export default function TransactionsPage() {
   const { me } = useMe();
@@ -44,7 +50,13 @@ export default function TransactionsPage() {
   const [to, setTo] = useState("");
   const [recording, setRecording] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [tag, setTag] = useState("");
+  const [missingDocs, setMissingDocs] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const staff = me.role !== "donor";
 
   // Deep links from Money flow and Sources (?direction=…&q=…&fund=…&account=…).
   useEffect(() => {
@@ -64,6 +76,8 @@ export default function TransactionsPage() {
   if (q.trim()) params.set("q", q.trim());
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (tag) params.set("tag", tag);
+  if (missingDocs) params.set("docs", "missing");
   const qs = params.toString();
   const { data, reload } = useJson<Resp>(`/api/transactions${qs ? `?${qs}` : ""}`);
   useLive(undefined, (e) => {
@@ -85,6 +99,31 @@ export default function TransactionsPage() {
         valueFormatter: (p) => (p.value === 0 ? "—" : `${p.value > 0 ? "+" : "−"}${usd(Math.abs(p.value))}`),
         cellStyle: (p) => ({ color: p.value < 0 ? "var(--out-ink)" : p.value > 0 ? "var(--good-ink)" : "var(--muted)", fontWeight: 600 }),
       },
+      ...(staff
+        ? ([
+            {
+              colId: "tags",
+              headerName: "Tags",
+              width: 180,
+              sortable: false,
+              valueGetter: (p) => (p.data?.tags ?? []).map((t) => t.name).join(", "),
+              cellRenderer: (p: { data?: Tx }) => <span className="flex flex-wrap gap-1 py-1">{(p.data?.tags ?? []).map((t) => <TagChip key={t.id} tag={t} />)}</span>,
+            },
+            {
+              colId: "docs",
+              headerName: "Docs",
+              width: 80,
+              sortable: false,
+              valueGetter: (p) => p.data?.docs?.length ?? 0,
+              cellRenderer: (p: { data?: Tx }) =>
+                p.data?.docs?.length ? (
+                  <span className="inline-flex items-center gap-1 text-xs"><Paperclip className="h-3.5 w-3.5" />{p.data.docs.length}</span>
+                ) : p.data?.direction === "out" && p.data.hasDocument === false ? (
+                  <span className="text-xs text-warn-ink" title="No invoice or receipt anywhere yet">missing</span>
+                ) : null,
+            },
+          ] as ColDef<Tx>[])
+        : []),
       { field: "via", headerName: "Via", width: 190, tooltipField: "via" },
       { field: "typeLabel", headerName: "Type", width: 140 },
       { field: "memo", headerName: "Memo", flex: 1, minWidth: 240, tooltipField: "memo" },
@@ -103,10 +142,11 @@ export default function TransactionsPage() {
       },
       { field: "hash", headerName: "Ledger hash", width: 120, valueFormatter: (p) => `${String(p.value).slice(0, 10)}…`, cellClass: "font-mono text-xs", tooltipField: "hash" },
     ],
-    [],
+    [staff],
   );
 
   const net = data ? data.totals.in - data.totals.out : 0;
+  const row = selected ? data?.transactions.find((t) => t.id === selected) : undefined;
   return (
     <Page
       wide
@@ -115,16 +155,19 @@ export default function TransactionsPage() {
       actions={
         <>
           <a href={`/api/transactions?${new URLSearchParams({ ...Object.fromEntries(params), format: "csv" })}`} className="btn btn-ghost"><Download className="h-4 w-4" /> Export CSV</a>
+          {staff && <button className="btn btn-ghost" onClick={() => setManaging((m) => !m)}>{managing ? <X className="h-4 w-4" /> : <Tag className="h-4 w-4" />} Tags</button>}
           {me.role !== "donor" && (
             <>
-              <button className="btn btn-primary" onClick={() => { setPaying((r) => !r); setRecording(false); }}>{paying ? <X className="h-4 w-4" /> : <Minus className="h-4 w-4" />} Record payment</button>
-              <button className="btn btn-primary" onClick={() => { setRecording((r) => !r); setPaying(false); }}>{recording ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Record incoming</button>
+              {me.canPay && <button className="btn btn-primary" onClick={() => { setSending((s) => !s); setPaying(false); setRecording(false); }}>{sending ? <X className="h-4 w-4" /> : <Send className="h-4 w-4" />} Pay via PayPal</button>}
+              <button className="btn btn-primary" onClick={() => { setPaying((r) => !r); setRecording(false); setSending(false); }}>{paying ? <X className="h-4 w-4" /> : <Minus className="h-4 w-4" />} Record payment</button>
+              <button className="btn btn-primary" onClick={() => { setRecording((r) => !r); setPaying(false); setSending(false); }}>{recording ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Record incoming</button>
             </>
           )}
         </>
       }
     >
       {notice && <div className="card p-3 mb-4 text-sm bg-brand-wash border-brand-line flex items-start justify-between gap-2">{notice}<button onClick={() => setNotice(null)} aria-label="Dismiss"><X className="h-4 w-4" /></button></div>}
+      {sending && <PayPalPayout onDone={(m) => { setSending(false); setNotice(m); void reload(); }} />}
       {paying && <RecordPayment funds={data?.funds ?? []} isAdmin={me.role === "admin"} onDone={(m) => { setPaying(false); setNotice(m); void reload(); }} />}
       {me.role !== "donor" && <DeclaredPayments meId={me.id} isAdmin={me.role === "admin"} onChanged={(m) => { setNotice(m); void reload(); }} />}
       {recording && <RecordIncoming funds={data?.funds ?? []} isAdmin={me.role === "admin"} onDone={() => { setRecording(false); void reload(); }} />}
@@ -172,14 +215,32 @@ export default function TransactionsPage() {
           <label className="label" htmlFor="tx-to">To</label>
           <input id="tx-to" type="date" className="input !py-1.5 text-sm" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
+        {staff && (
+          <div className="min-w-[10rem]">
+            <label className="label" htmlFor="tx-tag">Tag</label>
+            <select id="tx-tag" className="input !py-1.5 text-sm" value={tag} onChange={(e) => setTag(e.target.value)}>
+              <option value="">Any tag</option>
+              {(data?.tags ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+        )}
+        {staff && (
+          <label className="inline-flex items-center gap-1.5 text-sm pb-2" title="Money out with no invoice or receipt attached anywhere">
+            <input type="checkbox" checked={missingDocs} onChange={(e) => setMissingDocs(e.target.checked)} /> Missing documents
+          </label>
+        )}
         <div className="flex-1 min-w-[12rem]">
           <label className="label" htmlFor="tx-q">Search</label>
           <input id="tx-q" className="input !py-1.5 text-sm" placeholder="Payer, payee, memo or reference" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
 
+      {staff && managing && <TagManager onChanged={(m) => { setNotice(m); void reload(); }} />}
+      {staff && row && <EntryPanel key={row.id} row={row} allTags={data?.tags ?? []} meId={me.id} isAdmin={me.role === "admin"} onChanged={(m) => { setNotice(m); void reload(); }} onClose={() => setSelected(null)} />}
+      {staff && !row && <p className="text-xs text-muted mb-2">Click a transaction to add tags or attach an invoice or receipt.</p>}
+
       <div style={{ height: "calc(100vh - 330px)", minHeight: 420 }}>
-        <AgGridReact<Tx> theme={gridTheme} rowData={data?.transactions ?? []} columnDefs={cols} getRowId={(p) => p.data.id} pagination paginationPageSize={100} paginationPageSizeSelector={false} tooltipShowDelay={300} enableCellTextSelection loading={!data} />
+        <AgGridReact<Tx> theme={gridTheme} rowData={data?.transactions ?? []} columnDefs={cols} getRowId={(p) => p.data.id} pagination paginationPageSize={100} paginationPageSizeSelector={false} tooltipShowDelay={300} enableCellTextSelection loading={!data} onRowClicked={(e) => staff && e.data && setSelected(e.data.id)} rowClass={staff ? "cursor-pointer" : undefined} />
       </div>
     </Page>
   );

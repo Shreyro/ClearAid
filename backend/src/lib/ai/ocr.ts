@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { wakeAi } from "../ai-power";
 import { config } from "../config";
 import { uploadsDir } from "../db";
 import type { StoredFile } from "../types";
@@ -18,6 +19,7 @@ export async function readText(f: StoredFile): Promise<{ text: string; engine: s
   if (!["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f.mime)) return null;
   const p = path.join(uploadsDir(), f.id);
   if (!fs.existsSync(p)) return null;
+  void wakeAi();
   try {
     const res = await fetch(`${config.local.ragUrl}/ocr`, {
       method: "POST",

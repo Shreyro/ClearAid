@@ -2,7 +2,9 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import type { Ctx } from "@/lib/http";
+import { startAiPower } from "@/lib/ai-power";
 import { startIndexing } from "@/lib/rag/copilot";
+import { startAutoSync } from "@/lib/bank-sync";
 import { getSession, requestContext } from "@/lib/session";
 import * as adminReset from "./routes/admin/reset/route";
 import * as appConfig from "./routes/config/route";
@@ -11,6 +13,7 @@ import * as bankAccounts from "./routes/bank/accounts/route";
 import * as bankImport from "./routes/bank/accounts/[id]/import/route";
 import * as bankSync from "./routes/bank/accounts/[id]/sync/route";
 import * as bankPlaid from "./routes/bank/plaid/route";
+import * as plaidWebhook from "./routes/plaid/webhook/route";
 import * as bankTxns from "./routes/bank/transactions/route";
 import * as fundCodes from "./routes/funds/[id]/codes/route";
 import * as fundFlow from "./routes/funds/[id]/flow/route";
@@ -18,16 +21,21 @@ import * as overview from "./routes/overview/route";
 import * as payments from "./routes/payments/route";
 import * as paymentScan from "./routes/payments/scan/route";
 import * as transactions from "./routes/transactions/route";
+import * as txTags from "./routes/transactions/tags/route";
+import * as txMeta from "./routes/transactions/meta/route";
 import * as authLogin from "./routes/auth/login/route";
 import * as authLogout from "./routes/auth/logout/route";
 import * as bankReceipts from "./routes/bank/transactions/[id]/receipts/route";
 import * as give from "./routes/give/[slug]/route";
 import * as giveOrder from "./routes/give/[slug]/order/route";
 import * as giveCapture from "./routes/give/[slug]/capture/route";
+import * as giveTestCard from "./routes/give/[slug]/test-card/route";
 import * as ngoControls from "./routes/ngo/controls/route";
 import * as ngoAssignments from "./routes/ngo/assignments/route";
 import * as ngoMembers from "./routes/ngo/members/route";
 import * as copilot from "./routes/copilot/route";
+import * as copilotChats from "./routes/copilot/chats/route";
+import * as copilotChat from "./routes/copilot/chats/[id]/route";
 import * as embeds from "./routes/embeds/route";
 import * as embedPreview from "./routes/embeds/preview/route";
 import * as publicEmbed from "./routes/embed/[key]/route";
@@ -64,9 +72,12 @@ const routes: [string, unknown][] = [
   ["/api/bank/accounts/:id/import", bankImport],
   ["/api/bank/accounts/:id/sync", bankSync],
   ["/api/bank/plaid", bankPlaid],
+  ["/api/plaid/webhook", plaidWebhook],
   ["/api/bank/transactions", bankTxns],
   ["/api/bank/transactions/:id/receipts", bankReceipts],
   ["/api/copilot", copilot],
+  ["/api/copilot/chats", copilotChats],
+  ["/api/copilot/chats/:id", copilotChat],
   ["/api/embed/:key", publicEmbed],
   ["/api/embeds", embeds],
   ["/api/embeds/preview", embedPreview],
@@ -83,6 +94,7 @@ const routes: [string, unknown][] = [
   ["/api/give/:slug", give],
   ["/api/give/:slug/order", giveOrder],
   ["/api/give/:slug/capture", giveCapture],
+  ["/api/give/:slug/test-card", giveTestCard],
   ["/api/ngo/assignments", ngoAssignments],
   ["/api/ngo/controls", ngoControls],
   ["/api/ngo/members", ngoMembers],
@@ -93,6 +105,8 @@ const routes: [string, unknown][] = [
   ["/api/session", session],
   ["/api/stream", stream],
   ["/api/transactions", transactions],
+  ["/api/transactions/tags", txTags],
+  ["/api/transactions/meta", txMeta],
   ["/api/vendors", vendors],
   ["/api/withdrawals", withdrawals],
   ["/api/withdrawals/:id", withdrawal],
@@ -101,7 +115,7 @@ const routes: [string, unknown][] = [
 ];
 
 /** Routes reachable without signing in. */
-const OPEN_ROUTES = new Set(["/api/auth/login", "/api/auth/logout", "/api/session", "/api/config", "/api/paypal/webhook", "/api/give/:slug", "/api/give/:slug/order", "/api/give/:slug/capture", "/api/embed/:key"]);
+const OPEN_ROUTES = new Set(["/api/auth/login", "/api/auth/logout", "/api/session", "/api/config", "/api/paypal/webhook", "/api/plaid/webhook", "/api/give/:slug", "/api/give/:slug/order", "/api/give/:slug/capture", "/api/embed/:key"]);
 
 /**
  * The only things a donor login may do: read where the money went. Everything
@@ -125,6 +139,9 @@ const DONOR_ROUTES = new Set([
   // The local Copilot only answers from the funds an admin assigned to the donor.
   "GET /api/copilot",
   "POST /api/copilot",
+  "GET /api/copilot/chats",
+  "POST /api/copilot/chats",
+  "GET /api/copilot/chats/:id",
 ]);
 
 export const app = new Hono();
@@ -155,6 +172,8 @@ app.notFound((c) => c.json({ error: "Not found" }, 404));
 const port = Number(process.env.PORT) || 4000;
 // Keep the local Copilot's FAISS index in step with the data (needs rag/server.py running; harmless if it isn't).
 startIndexing();
+startAutoSync();
+startAiPower();
 
 const server = serve({ fetch: app.fetch, port, hostname: process.env.HOST || "0.0.0.0" }, (info) => {
   console.log(`[clearaid] API listening on http://${info.address}:${info.port}`);

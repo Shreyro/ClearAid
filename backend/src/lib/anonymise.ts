@@ -128,6 +128,7 @@ const STOP_WORDS = new Set(
    food rice grain ration rations water shelter tarpaulin tarpaulins tent tents blanket blankets medicine medicines
    hygiene kit kits truck trucks hire boat boats camp restock admin staff team field stipend travel ticket tickets
    diesel repair repairs maintenance equipment materials stationery printing advance expenses reimbursement
+   paypal ppd ccd ctx web id inst xfer xfr batch settlement payout payouts
    for the and of to from by via in on at with`.split(/\s+/),
 );
 

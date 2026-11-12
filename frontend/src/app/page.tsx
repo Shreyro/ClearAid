@@ -12,6 +12,7 @@ import { MoneyFlowChart } from "@/components/Charts";
 import { Sankey, type FlowGraph } from "@/components/Sankey";
 import { CodeChip } from "@/components/banking";
 import { MovementList, PartyTable, type Movement, type Party } from "@/components/FlowParts";
+import { DataGrid } from "@/components/DataGrid";
 
 type Overview = {
   totals: { received: number; spent: number; returned: number; balance: number; untagged: { count: number; in: number; out: number } };
@@ -92,34 +93,35 @@ export default function MoneyFlowPage() {
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_400px] gap-6 mt-6">
         <div className="space-y-6 min-w-0">
-          <section className="card overflow-x-auto">
+          <section className="card overflow-hidden">
             <div className="px-5 pt-4 pb-3 flex items-center justify-between">
               <h2 className="text-base font-semibold">Funds</h2>
               <Link href="/funds" className="text-xs text-ink-2 hover:text-ink">All funds →</Link>
             </div>
-            <table className="w-full text-sm min-w-[560px]">
-              <thead>
-                <tr className="text-left text-xs text-muted border-y border-line">
-                  <th className="px-5 py-2 font-medium">Fund</th>
-                  <th className="px-3 py-2 font-medium text-right">In</th>
-                  <th className="px-3 py-2 font-medium text-right">Out</th>
-                  <th className="px-5 py-2 font-medium text-right">Held</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.funds.map((f) => (
-                  <tr key={f.id} className="border-b border-line last:border-0">
-                    <td className="px-5 py-3">
+            <DataGrid
+              rows={data.funds}
+              rowId={(f) => f.id}
+              minWidth={560}
+              ariaLabel="Funds"
+              cols={[
+                {
+                  header: "Fund",
+                  flex: 1,
+                  minWidth: 220,
+                  wrap: true,
+                  value: (f) => f.title,
+                  render: (f) => (
+                    <div>
                       <Link href={`/funds/${f.slug}`} className="font-medium hover:underline flex items-center gap-2"><span className="h-2 w-2 rounded-full shrink-0" style={{ background: f.accent }} />{f.title}</Link>
                       <div className="mt-1 flex flex-wrap gap-1.5 items-center">{f.codes.map((c) => <CodeChip key={c} code={c} />)}{f.status !== "active" && <StatusPill status={f.status} />}</div>
-                    </td>
-                    <td className="px-3 py-3 text-right tnum">{usd(f.received)}</td>
-                    <td className="px-3 py-3 text-right tnum">{usd(f.spent + f.returned)}</td>
-                    <td className="px-5 py-3 text-right tnum font-semibold">{usd(f.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  ),
+                },
+                { header: "In", width: 120, align: "right", value: (f) => f.received, render: (f) => usd(f.received) },
+                { header: "Out", width: 120, align: "right", value: (f) => f.spent + f.returned, render: (f) => usd(f.spent + f.returned) },
+                { header: "Held", width: 130, align: "right", value: (f) => f.balance, render: (f) => <b>{usd(f.balance)}</b> },
+              ]}
+            />
           </section>
 
           <Section title="Money in vs money out" action={<span className="text-xs text-muted">Cumulative, all visible funds</span>}>

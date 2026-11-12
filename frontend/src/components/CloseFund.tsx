@@ -5,6 +5,7 @@ import { ArrowRight, Landmark, Loader2, Lock, Plus, Undo2, X } from "lucide-reac
 import clsx from "clsx";
 import { api, useJson, usd } from "./hooks";
 import { Section } from "./ui";
+import { DataGrid } from "./DataGrid";
 
 type Preview = {
   status: "active" | "closing" | "closed";
@@ -284,45 +285,36 @@ function DonorReturns({ fundId, stamp, onDone }: { fundId: string; stamp: unknow
         )}
 
         <div className="overflow-x-auto rounded-lg border border-line">
-          <table className="w-full text-sm min-w-[760px]">
-            <thead>
-              <tr className="text-left text-xs text-muted border-b border-line">
-                <th className="px-3 py-2 font-medium">Donor</th>
-                <th className="px-3 py-2 font-medium">PayPal account</th>
-                <th className="px-3 py-2 font-medium text-right">Gave</th>
-                <th className="px-3 py-2 font-medium text-right">Share</th>
-                <th className="px-3 py-2 font-medium text-right">Owed</th>
-                <th className="px-3 py-2 font-medium text-right">Sent</th>
-                <th className="px-3 py-2 font-medium">To send</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((r) => (
-                <tr key={r.key} className="border-b border-line last:border-0">
-                  <td className="px-3 py-2">
-                    <div className="font-medium">{r.donor}</div>
-                    <div className="text-xs text-muted">{r.email ?? "no PayPal email"} · {r.gifts} gift{r.gifts === 1 ? "" : "s"}</div>
-                  </td>
-                  <td className="px-3 py-2 text-ink-2">{r.accountName}</td>
-                  <td className="px-3 py-2 text-right tnum">{usd(r.given)}</td>
-                  <td className="px-3 py-2 text-right tnum">{r.sharePct.toFixed(2)}%</td>
-                  <td className="px-3 py-2 text-right tnum">{usd(r.owed)}</td>
-                  <td className="px-3 py-2 text-right tnum">{r.sent ? usd(r.sent) : "—"}</td>
-                  <td className="px-3 py-2">
-                    {r.remaining > 0 ? (
-                      <>
-                        <span className="tnum font-semibold">{usd(r.remaining)}</span>{" "}
-                        <span className="text-xs text-ink-2">{r.method === "refund" ? "as refunds" : "as a payout"}</span>
-                        {r.blocker && <div className="text-xs text-critical">{r.blocker}</div>}
-                      </>
-                    ) : (
-                      <span className="text-xs text-good-ink">All sent</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataGrid
+            rows={data.rows}
+            rowId={(r) => r.key}
+            minWidth={760}
+            inCard={false}
+            ariaLabel="What each donor gets back"
+            cols={[
+              { header: "Donor", flex: 1, minWidth: 200, wrap: true, value: (r) => r.donor, render: (r) => <div><div className="font-medium">{r.donor}</div><div className="text-xs text-muted">{r.email ?? "no PayPal email"} · {r.gifts} gift{r.gifts === 1 ? "" : "s"}</div></div> },
+              { header: "PayPal account", width: 160, value: (r) => r.accountName, render: (r) => <span className="text-ink-2">{r.accountName}</span> },
+              { header: "Gave", width: 105, align: "right", value: (r) => r.given, render: (r) => usd(r.given) },
+              { header: "Share", width: 90, align: "right", value: (r) => r.sharePct, render: (r) => `${r.sharePct.toFixed(2)}%` },
+              { header: "Owed", width: 105, align: "right", value: (r) => r.owed, render: (r) => usd(r.owed) },
+              { header: "Sent", width: 105, align: "right", value: (r) => r.sent, render: (r) => (r.sent ? usd(r.sent) : "—") },
+              {
+                header: "To send",
+                width: 190,
+                wrap: true,
+                value: (r) => r.remaining,
+                render: (r) =>
+                  r.remaining > 0 ? (
+                    <div>
+                      <span className="tnum font-semibold">{usd(r.remaining)}</span> <span className="text-xs text-ink-2">{r.method === "refund" ? "as refunds" : "as a payout"}</span>
+                      {r.blocker && <div className="text-xs text-critical">{r.blocker}</div>}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-good-ink">All sent</span>
+                  ),
+              },
+            ]}
+          />
         </div>
 
         {msg && <div className={clsx("rounded-lg border p-3 text-sm", msg.bad ? "border-bad-line bg-bad-wash" : "border-brand-line bg-brand-wash")}>{msg.text}</div>}

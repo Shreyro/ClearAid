@@ -1,4 +1,4 @@
-import { config } from "./config";
+import { config, paypalPartnerLive } from "./config";
 import { decryptToken } from "./plaid";
 import type { PayPalConn } from "./paypal";
 import type { DB, Fund, PayPalAccount } from "./types";
@@ -46,6 +46,12 @@ export function connOf(a: PayPalAccount): PayPalConn {
     const live = a.mode === "live";
     return { id: a.id, name: a.name, env: config.paypal.env, live, clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, webhookId: config.paypal.webhookId };
   }
+  if (a.mode === "partner") {
+    // ClearAid's partner app, acting for the NGO's merchant ID.
+    const P = config.paypal.partner;
+    const live = paypalPartnerLive() && a.status === "active" && Boolean(a.merchantId);
+    return { id: a.id, name: a.name, env: config.paypal.env, live, clientId: P.clientId, clientSecret: P.clientSecret, webhookId: P.webhookId, actAs: a.merchantId, bnCode: P.bnCode || undefined };
+  }
   let secret = "";
   try {
     secret = a.clientSecretEnc ? decryptToken(a.clientSecretEnc) : "";
@@ -87,7 +93,10 @@ export function paypalAccountView(db: DB, a: PayPalAccount) {
     builtin: a.id === DEFAULT_PAYPAL,
     clientId: a.clientId ? `${a.clientId.slice(0, 6)}…${a.clientId.slice(-4)}` : null,
     webhooks: Boolean(a.webhookId),
-    webhookUrl: `${config.appUrl.replace(/\/$/, "")}/api/paypal/webhook${a.id === DEFAULT_PAYPAL ? "" : `?account=${a.id}`}`,
+    webhookUrl: `${config.appUrl.replace(/\/$/, "")}/api/paypal/webhook${a.id === DEFAULT_PAYPAL ? "" : a.mode === "partner" ? "?account=partner" : `?account=${a.id}`}`,
+    // Accounts connected by login: the NGO's PayPal merchant ID and how its sign-up went.
+    merchantId: a.mode === "partner" ? (a.merchantId ?? null) : null,
+    onboarding: a.onboarding ?? null,
     status: a.status,
     createdAt: a.createdAt || null,
     funds: funds.map((f) => ({ id: f.id, title: f.title, slug: f.slug })),

@@ -7,6 +7,8 @@ import { bankCandidates, expectsBankLine, linkPayment, PAYMENT_METHODS, payments
 import { actorOf, HttpError, requireFundAccess, requireNgo, type SignedInMember } from "@/lib/session";
 import { CATEGORIES, type Category, type DB, type DeclaredPayment, type LedgerEntry, type PaymentMethod } from "@/lib/types";
 import { announce } from "../bank/shared";
+import { sendPayPalPayment } from "@/lib/paypal-pay";
+import { fundAccount, connOf } from "@/lib/paypal-accounts";
 
 const mayRecord = (db: DB, me: SignedInMember, fundId: string) => me.role === "admin" || Boolean(db.funds.find((f) => f.id === fundId)?.assignees.includes(me.id));
 
@@ -21,7 +23,19 @@ export const GET = handle(async (req: Request) => {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 500)
     .map((p) => paymentView(db, p));
-  return json({ payments: rows, methods: PAYMENT_METHODS });
+  // For "Pay via PayPal": may this person pay, and from which funds (with each fund's PayPal account).
+  const payFrom = me.canPay
+    ? db.funds
+        .filter((f) => f.ngoId === me.ngoId && f.status !== "closed" && (me.role === "admin" || f.assignees.includes(me.id)))
+        .map((f) => {
+          const a = fundAccount(db, f);
+          const c = connOf(a);
+          return { id: f.id, title: f.title, account: a.name, live: c.live, simulated: a.mode === "simulated", canSend: a.mode !== "partner" && (a.mode !== "live" || c.live) };
+        })
+    : [];
+  // Registered payees with their PayPal emails, only for people allowed to pay (the payees page never lists emails).
+  const payees = me.canPay ? db.vendors.filter((v) => v.ngoId === me.ngoId).map((v) => ({ id: v.id, name: v.name, paypalEmail: v.paypalEmail })) : [];
+  return json({ payments: rows, methods: PAYMENT_METHODS, canPay: me.canPay, payFrom, payees });
 });
 
 type Body =
@@ -42,7 +56,9 @@ type Body =
   | { action: "unlink"; id?: string }
   /** Add the receipt or invoice to a payment recorded without one. */
   | { action: "attach"; id?: string; fileId?: string }
-  | { action: "void"; id?: string; reason?: string };
+  | { action: "void"; id?: string; reason?: string }
+  /** Pay someone through PayPal from a fund (admins, and staff an admin allowed). */
+  | { action: "paypal"; fundId?: string; amountUsd?: number; payee?: string; email?: string; description?: string; category?: string; fileId?: string };
 
 /**
  * Step 2: record the payment the person checked. It's posted to the fund's
@@ -68,6 +84,7 @@ export const POST = handle(async (req: Request) => {
     if (b.date > nowIso().slice(0, 10)) throw new HttpError(400, "The payment date can't be in the future");
     const method = (b.method && b.method in PAYMENT_METHODS ? b.method : "") as PaymentMethod;
     if (!method) throw new HttpError(400, "How was it paid?");
+    if (method === "paypal") throw new HttpError(400, "PayPal payouts are sent with Pay via PayPal, so ClearAid has PayPal's record of them");
     const category = b.category ? (CATEGORIES.find((c) => c.id === b.category)?.id as Category | undefined) : undefined;
     if (b.category && !category) throw new HttpError(400, "Unknown category");
     const invoiceNumber = b.invoiceNumber?.trim().slice(0, 60) || undefined;
@@ -149,6 +166,20 @@ export const POST = handle(async (req: Request) => {
     });
   }
 
+  if (b.action === "paypal") {
+    const r = await sendPayPalPayment(me, {
+      fundId: b.fundId ?? "",
+      amount: toCents(Number(b.amountUsd)),
+      payee: b.payee ?? "",
+      email: b.email ?? "",
+      description: b.description ?? "",
+      category: b.category || undefined,
+      fileId: b.fileId || undefined,
+    });
+    announce([]);
+    return json({ ok: true, payment: paymentView(getDb(), r.payment), message: `${fmt(r.payment.amount)} sent by PayPal to ${r.payment.payee} from "${r.account}"${r.live ? "" : " (simulated: no money moved)"}. It's on the fund's ledger.` });
+  }
+
   if (b.action === "attach") {
     const message = mutate((db) => {
       const p = paymentsOf(db).find((x) => x.id === b.id && x.ngoId === me.ngoId);
@@ -199,6 +230,7 @@ export const POST = handle(async (req: Request) => {
       const reason = b.reason?.trim();
       if (!reason || reason.length < 3) throw new HttpError(400, "Give a reason (it goes on the ledger and in the audit log)");
       if (me.role !== "admin" && p.byId !== me.id) throw new HttpError(403, "Only the person who recorded it or an admin can void it");
+      if (p.method === "paypal") throw new HttpError(400, "This was sent through PayPal, so the money has left the PayPal account. If PayPal returns it, ClearAid voids it by itself.");
       if (p.status === "matched") unlink();
       entries.push(reversePayment(db, p, reason.slice(0, 120)));
       p.status = "void";

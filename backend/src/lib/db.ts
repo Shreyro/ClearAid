@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { config } from "./config";
+import { appendLedger } from "./ledger";
 import { hashPassword } from "./password";
 import { buildSeed, DEMO_LOGINS } from "./seed";
 import { seedFieldAccount, seedPayPalAccounts } from "./seed-bank";
@@ -61,8 +62,8 @@ function load(): DB {
     const parsed = JSON.parse(fs.readFileSync(dbFile(), "utf8")) as DB;
     if (parsed.version === DB_VERSION) {
       const added = addDemoDonor(parsed);
-      // Data saved before an NGO could have several accounts: add the demo's second bank and PayPal accounts.
-      const accounts = [seedFieldAccount(parsed, Date.now()), seedPayPalAccounts(parsed, Date.now())].some(Boolean);
+      // Data saved before an NGO could have several accounts: add the demo's second bank and PayPal accounts (not on clean data).
+      const accounts = parsed.seedMode === "clean" ? false : [seedFieldAccount(parsed, Date.now()), seedPayPalAccounts(parsed, Date.now())].some(Boolean);
       if (seedDonorFunds(parsed) || added || accounts) persist(parsed);
       holder.db = parsed;
       return parsed;
@@ -104,7 +105,13 @@ export function mutate<T>(fn: (db: DB) => T): T {
   return out;
 }
 
-export function resetDb() {
+/**
+ * Start again. "demo" restores the demo scenario. "clean" keeps the NGO, its
+ * logins, funds (with their tracking codes and needs) and registered payees,
+ * and nothing else: no donations, payments, bank or PayPal accounts, files or
+ * history, ready to be filled from the PayPal and Plaid sandboxes.
+ */
+export function resetDb(mode: "demo" | "clean" = "demo") {
   holder.db = undefined;
   try {
     fs.rmSync(dbFile(), { force: true });
@@ -112,8 +119,52 @@ export function resetDb() {
   } catch {
     /* ignore */
   }
-  const db = load();
+  let db = load();
+  if (mode === "clean") {
+    db = cleanSlate(db);
+    holder.db = db;
+    try {
+      fs.rmSync(uploadsDir(), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    persist(db);
+  }
   changed();
+  return db;
+}
+
+function cleanSlate(seeded: DB): DB {
+  const at = nowIso();
+  const funds = seeded.funds.map((f) => {
+    const { closingStartedAt: _c, closedAt: _d, returnBase: _r, insights: _i, carryForwardFundId: _cf, paypalAccountId: _p, ...rest } = f;
+    return { ...rest, status: "active" as const, startedAt: at, needs: f.needs.map((n) => ({ ...n, fulfilledQty: 0 })) };
+  });
+  const db: DB = {
+    version: seeded.version,
+    seedMode: "clean",
+    ngos: seeded.ngos,
+    funds,
+    donors: [],
+    captures: [],
+    donations: [],
+    vendors: seeded.vendors,
+    files: [],
+    withdrawals: [],
+    ledger: [],
+    orders: [],
+    processedWebhooks: [],
+    assignmentRequests: [],
+    auditLog: [],
+    bankAccounts: [],
+    statementImports: [],
+    bankTxns: [],
+    embeds: [],
+  };
+  // Each fund's ledger starts with its opening line, as when a fund is created.
+  for (const f of db.funds) {
+    appendLedger(db, { fundId: f.id, type: "fund_opened", amount: 0, memo: `Fund opened by ${db.ngos.find((n) => n.id === f.ngoId)?.name ?? "the NGO"}. Goal $${(f.goal / 100).toLocaleString()}.`, actor: db.ngos.find((n) => n.id === f.ngoId)?.name ?? "NGO" });
+  }
   return db;
 }
 

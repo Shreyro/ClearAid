@@ -1,46 +1,75 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
 import { config } from "./config";
 import type { ParsedRow } from "./banking";
 import { sessionSecret } from "./session";
 
 /**
  * Plaid (bank aggregation) over its REST API: Link token → public token
- * exchange → /transactions/sync with a cursor. Without PLAID_CLIENT_ID /
- * PLAID_SECRET the app offers a simulated bank instead, so the demo always works.
+ * exchange → /transactions/sync with a cursor. Plaid's webhooks say when new
+ * transactions are ready; a scheduled sync is the fallback (see bank-sync.ts).
+ * Without PLAID_CLIENT_ID / PLAID_SECRET the app offers a simulated bank
+ * instead, so the demo always works.
  */
 
 export const plaidLive = () => Boolean(config.plaid.clientId && config.plaid.secret);
 const base = () => (config.plaid.env === "production" ? "https://production.plaid.com" : "https://sandbox.plaid.com");
 
-export class PlaidError extends Error {}
+export class PlaidError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+  }
+}
+
+/** Errors that mean the person has to log in to their bank again (Link in update mode). */
+export const RECONNECT_CODES = new Set(["ITEM_LOGIN_REQUIRED", "PENDING_EXPIRATION", "PENDING_DISCONNECT", "USER_PERMISSION_REVOKED", "ACCESS_NOT_GRANTED", "NO_ACCOUNTS"]);
 
 async function call<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${base()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ client_id: config.plaid.clientId, secret: config.plaid.secret, ...body }),
+    signal: AbortSignal.timeout(60_000),
   });
   const data = (await res.json().catch(() => ({}))) as { error_message?: string; error_code?: string; display_message?: string };
-  if (!res.ok) throw new PlaidError(`Plaid: ${data.display_message || data.error_message || `request failed (${res.status})`}${data.error_code ? ` [${data.error_code}]` : ""}`);
+  if (!res.ok) throw new PlaidError(`Plaid: ${data.display_message || data.error_message || `request failed (${res.status})`}${data.error_code ? ` [${data.error_code}]` : ""}`, data.error_code);
   return data as T;
 }
 
-export async function createLinkToken(userId: string) {
+/**
+ * A Link token. With `accessToken` it opens Link in update mode, to log in to
+ * an already-connected bank again without losing its history.
+ */
+export async function createLinkToken(userId: string, opts: { accessToken?: string } = {}) {
+  const P = config.plaid;
   const r = await call<{ link_token: string; expiration: string }>("/link/token/create", {
     client_name: "ClearAid",
     user: { client_user_id: userId },
-    products: ["transactions"],
-    transactions: { days_requested: 90 },
-    country_codes: ["US"],
+    country_codes: P.countryCodes,
     language: "en",
+    ...(opts.accessToken ? { access_token: opts.accessToken } : { products: ["transactions"], transactions: { days_requested: P.historyDays } }),
+    ...(P.redirectUri ? { redirect_uri: P.redirectUri } : {}),
+    ...(P.webhookUrl ? { webhook: P.webhookUrl } : {}),
   });
   return r.link_token;
 }
 
+export type PlaidAccount = { id: string; name: string; mask?: string; type?: string; subtype?: string };
+
 export async function exchangePublicToken(publicToken: string) {
   const r = await call<{ access_token: string; item_id: string }>("/item/public_token/exchange", { public_token: publicToken });
-  const acc = await call<{ accounts: { account_id: string; name: string; official_name?: string; mask?: string; type: string }[]; item: { institution_id?: string } }>("/accounts/get", { access_token: r.access_token });
-  return { accessToken: r.access_token, itemId: r.item_id, accounts: acc.accounts.map((a) => ({ id: a.account_id, name: a.official_name || a.name, mask: a.mask ?? undefined })) };
+  return { accessToken: r.access_token, itemId: r.item_id, accounts: await getAccounts(r.access_token) };
+}
+
+/** The accounts (checking, savings…) a bank login gives access to. */
+export async function getAccounts(accessToken: string): Promise<PlaidAccount[]> {
+  const acc = await call<{ accounts: { account_id: string; name: string; official_name?: string; mask?: string; type: string; subtype?: string | null }[] }>("/accounts/get", { access_token: accessToken });
+  return acc.accounts.map((a) => ({ id: a.account_id, name: a.official_name || a.name, mask: a.mask ?? undefined, type: a.type, subtype: a.subtype ?? undefined }));
+}
+
+/** Point an existing connection at the current webhook URL (e.g. after moving to a new host). */
+export async function updateItemWebhook(accessToken: string) {
+  if (!config.plaid.webhookUrl) return;
+  await call("/item/webhook/update", { access_token: accessToken, webhook: config.plaid.webhookUrl });
 }
 
 type PlaidTxn = {
@@ -55,12 +84,30 @@ type PlaidTxn = {
   iso_currency_code?: string | null;
 };
 
-/** Pull everything new since the cursor. Pending lines are skipped (they come back posted, with a new ID). */
+/** A bank line plus the Plaid account it belongs to, so a multi-account login is split correctly. */
+export type PlaidRow = ParsedRow & { plaidAccountId: string };
+
+/**
+ * Pull everything new since the cursor, across every account of the bank login.
+ * The first sync returns the whole history asked for when it was connected.
+ * Pending lines are skipped (they come back posted, with a new ID). If the
+ * data changes while paging, Plaid asks to start again from the same cursor.
+ */
 export async function syncTransactions(accessToken: string, cursor: string | undefined) {
-  const rows: ParsedRow[] = [];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await syncPages(accessToken, cursor);
+    } catch (e) {
+      if (!(e instanceof PlaidError) || e.code !== "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION" || attempt >= 2) throw e;
+    }
+  }
+}
+
+async function syncPages(accessToken: string, cursor: string | undefined) {
+  const rows: PlaidRow[] = [];
   let next = cursor;
   let skipped = 0;
-  for (let page = 0; page < 20; page++) {
+  for (let page = 0; page < 100; page++) {
     const r = await call<{ added: PlaidTxn[]; modified: PlaidTxn[]; removed: { transaction_id: string }[]; next_cursor: string; has_more: boolean }>("/transactions/sync", {
       access_token: accessToken,
       cursor: next || undefined,
@@ -72,6 +119,7 @@ export async function syncTransactions(accessToken: string, cursor: string | und
         continue;
       }
       rows.push({
+        plaidAccountId: t.account_id,
         date: t.date,
         // Plaid reports money out as positive.
         amount: -Math.round(t.amount * 100),
@@ -87,6 +135,45 @@ export async function syncTransactions(accessToken: string, cursor: string | und
     if (!r.has_more) break;
   }
   return { rows, cursor: next, skipped };
+}
+
+// ------------------------------------------------------ Webhook checking ----
+
+const webhookKeys = new Map<string, KeyObject>();
+
+/**
+ * Check a webhook really came from Plaid: the Plaid-Verification header is an
+ * ES256 JWT signed with a key Plaid publishes, issued in the last 5 minutes,
+ * carrying the SHA-256 of the exact body received.
+ */
+export async function verifyPlaidWebhook(rawBody: string, jwt: string | null, now = Date.now()) {
+  if (!jwt || !plaidLive()) return false;
+  try {
+    const header = JSON.parse(Buffer.from(jwt.split(".")[0], "base64url").toString("utf8")) as { alg?: string; kid?: string };
+    if (header.alg !== "ES256" || !header.kid) return false;
+    let key = webhookKeys.get(header.kid);
+    if (!key) {
+      const r = await call<{ key: { kty: string; crv: string; x: string; y: string; expired_at?: number | null } }>("/webhook_verification_key/get", { key_id: header.kid });
+      if (r.key.expired_at) return false;
+      key = createPublicKey({ key: { kty: r.key.kty, crv: r.key.crv, x: r.key.x, y: r.key.y }, format: "jwk" });
+      webhookKeys.set(header.kid, key);
+    }
+    return checkWebhookJwt(rawBody, jwt, key, now);
+  } catch {
+    return false;
+  }
+}
+
+/** The signature, age and body-hash checks on a Plaid webhook JWT, given Plaid's public key. */
+export function checkWebhookJwt(rawBody: string, jwt: string, key: KeyObject, now = Date.now()) {
+  const [h, p, s] = jwt.split(".");
+  if (!h || !p || !s) return false;
+  if (!verify("sha256", Buffer.from(`${h}.${p}`), { key, dsaEncoding: "ieee-p1363" }, Buffer.from(s, "base64url"))) return false;
+  const claims = JSON.parse(Buffer.from(p, "base64url").toString("utf8")) as { iat?: number; request_body_sha256?: string };
+  if (typeof claims.iat !== "number" || Math.abs(now / 1000 - claims.iat) > 5 * 60) return false;
+  const want = Buffer.from(createHash("sha256").update(rawBody).digest("hex"));
+  const got = Buffer.from(String(claims.request_body_sha256 ?? ""));
+  return want.length === got.length && timingSafeEqual(want, got);
 }
 
 // ------------------------------------------------ Token encryption at rest ----

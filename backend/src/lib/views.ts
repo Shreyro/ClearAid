@@ -53,7 +53,6 @@ export function withdrawalView(db: DB, w: Withdrawal, session: Session) {
   };
 }
 
-export type WithdrawalView = ReturnType<typeof withdrawalView>;
 
 export function fundCard(db: DB, f: Fund) {
   const s = fundStats(db, f);
@@ -131,5 +130,4 @@ export function fundDetail(db: DB, f: Fund, session: Session) {
   };
 }
 
-export type FundDetail = ReturnType<typeof fundDetail>;
 export type FundCard = ReturnType<typeof fundCard>;

@@ -14,7 +14,8 @@ export const GET = handle(async (_req: Request, ctx: Ctx<{ slug: string }>) => {
   return json({
     fund: { slug: fund.slug, title: fund.title, region: fund.region, description: fund.description, accent: fund.accent, open: fund.status === "active", code },
     ngo: { name: ngo?.name ?? "", country: ngo?.country ?? "" },
-    paypal: { live: pp.live, env: pp.env, clientId: pp.live ? pp.clientId : null },
+    // merchantId: an account connected by login; PayPal's buttons then pay that merchant through ClearAid's partner app.
+    paypal: { live: pp.live, env: pp.env, clientId: pp.live ? pp.clientId : null, merchantId: pp.live && pp.actAs ? pp.actAs : null },
     limits: { min: MIN_GIFT, max: MAX_GIFT },
     // Whether donors may ask for their share of the leftover back when the fund closes.
     returns: Boolean(fund.donorReturns),

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { markTransfer, transferLabel, transferSource } from "./transfers";
 import { anonymiseBankLine } from "./anonymise";
 import { audit } from "./audit";
 import { newId, nowIso } from "./db";
@@ -212,6 +213,12 @@ function reverseAllocations(db: DB, account: BankAccount, t: BankTxn, reason: st
  * fee policy when `applyFeePolicy` is set (new imports, or an explicit re-apply).
  */
 function classify(db: DB, account: BankAccount, t: BankTxn, idx: Map<string, Fund>, ledgerAt: string | undefined, applyFeePolicy: boolean) {
+  // A PayPal withdrawal reaching a linked bank is money already counted: a transfer, never a fund's.
+  const from = transferSource(db, account, t);
+  if (from) {
+    markTransfer(db, t, from, "rule");
+    return [];
+  }
   const m = matchCodes(t.description, idx);
   if (m.kind === "tagged") {
     t.status = "auto_tagged";
@@ -534,7 +541,7 @@ export function scoreReceipt(t: BankTxn, x: NonNullable<BankReceipt["extraction"
 /** Admins see every bank line; staff see the untagged queue plus lines on funds they're assigned to. */
 export function canSeeTxn(t: BankTxn, member: { id: string; role: string }, db: DB) {
   if (member.role === "admin") return true;
-  if (t.status === "untagged" || t.status === "fee_unallocated") return true;
+  if (t.status === "untagged" || t.status === "fee_unallocated" || t.status === "transfer") return true;
   if (t.paymentId) {
     const p = db.payments?.find((x) => x.id === t.paymentId);
     return Boolean(p && db.funds.find((f) => f.id === p.fundId)?.assignees.includes(member.id));
@@ -579,6 +586,7 @@ export function txnView(db: DB, t: BankTxn, me?: { id: string; role: string }) {
     },
     receipts: (t.receipts ?? []).map((r) => ({ ...r, fileName: db.files.find((f) => f.id === r.fileId)?.name ?? "receipt", url: `/api/files/${r.fileId}` })),
     missingReceipt: account ? missingReceipt(db, t, account.ngoId) : false,
+    transfer: transferLabel(db, t),
     payment: (() => {
       const p = t.paymentId ? db.payments?.find((x) => x.id === t.paymentId) : undefined;
       return p && { id: p.id, payee: p.publicPayee, date: p.date, byName: p.byName, fundTitle: fundTitle(p.fundId), receiptUrl: p.receipt ? `/api/files/${p.receipt.fileId}` : undefined };

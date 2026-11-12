@@ -31,6 +31,8 @@ export const GET = handle(async () => {
       username: me.role === "admin" ? m.username : undefined,
       createdAt: m.createdAt,
       fundIds: funds.filter((f) => f.assignees.includes(m.id)).map((f) => f.id),
+      // May send PayPal payments: admins always, staff when an admin allowed it.
+      canPay: m.role === "admin" || (m.role === "user" && Boolean(m.canPay)),
       // Donors: the funds an admin lets them see.
       viewFundIds: m.role === "donor" ? funds.filter((f) => f.viewers?.includes(m.id)).map((f) => f.id) : undefined,
     })),
@@ -39,7 +41,7 @@ export const GET = handle(async () => {
 
 type Body =
   | { action: "create"; name?: string; title?: string; username?: string; password?: string; role?: MemberRole }
-  | { action: "update"; id?: string; title?: string; role?: MemberRole; active?: boolean; password?: string }
+  | { action: "update"; id?: string; title?: string; role?: MemberRole; active?: boolean; password?: string; canPay?: boolean }
   | { action: "donor_funds"; id?: string; fundIds?: string[] };
 
 /** Admins create staff logins and manage existing ones. */
@@ -128,6 +130,15 @@ export const POST = handle(async (req: Request) => {
       if (b.title !== undefined) m.title = b.title.trim().slice(0, 80) || m.title;
       if (m.role !== nextRole) audit(db, { actor: me, action: "member.role_changed", targetId: m.id, summary: `Changed ${m.name} from ${roleLabel(m.role)} to ${roleLabel(nextRole)}`, meta: { from: m.role, to: nextRole } });
       if (m.role !== nextRole && nextRole === "donor") dropFundAccess(db, m.id);
+      // Only staff carry the permission: admins always may pay, donors never.
+      if (b.canPay !== undefined || (m.role !== nextRole && nextRole !== "user" && m.canPay)) {
+        if (b.canPay !== undefined && nextRole !== "user") throw new HttpError(400, nextRole === "admin" ? "Admins can always send payments" : "Donor logins can't send payments");
+        const want = nextRole === "user" ? Boolean(b.canPay) : false;
+        if (Boolean(m.canPay) !== want) {
+          m.canPay = want || undefined;
+          audit(db, { actor: me, action: "member.payments_permission_changed", targetId: m.id, summary: want ? `Allowed ${m.name} to send PayPal payments from the funds they're on` : `${m.name} can no longer send PayPal payments` });
+        }
+      }
       if (m.role === "donor" && nextRole !== "donor") dropViewer(db, m.id);
       m.role = nextRole;
       if (b.password !== undefined) {

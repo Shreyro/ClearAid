@@ -44,6 +44,8 @@ export interface NgoMember {
   createdBy?: string;
   /** Set once the password is changed, so the demo credential is no longer advertised. */
   passwordChangedAt?: string;
+  /** Staff an admin allowed to send PayPal payments from the funds they're on. Admins always may. */
+  canPay?: boolean;
 }
 
 /** A staff member asking to be put on a fund. Someone else (an admin) has to approve it. */
@@ -410,6 +412,12 @@ export interface DonorReturn {
 
 export interface DB {
   version: number;
+  /**
+   * "clean": reset without the demo's money: the NGO, logins, funds and payees
+   * only, for filling with real sandbox transactions. The demo accounts aren't
+   * added back on start-up.
+   */
+  seedMode?: "demo" | "clean";
   ngos: Ngo[];
   funds: Fund[];
   donors: Donor[];
@@ -434,6 +442,40 @@ export interface DB {
   embeds?: PublicEmbed[];
   /** Leftover money returned to donors who asked for it. Read through `returnsOf`. */
   donorReturns?: DonorReturn[];
+  /** The NGO's own category tags for transactions. Read through `tagsOf`. */
+  txnTags?: TxnTag[];
+  /** Tags and documents added to transactions later, keyed "<fundId>:<seq>". Read through `metaOf`. */
+  entryMeta?: Record<string, EntryMeta>;
+  /** Copilot conversations, one list per person. Read through `chatsOf`. */
+  chats?: CopilotChat[];
+}
+
+/** One Copilot conversation, private to the person who had it. */
+export interface CopilotChat {
+  id: string;
+  /** NgoMember id of the owner. */
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: { role: "user" | "assistant"; text: string; ts: string; reply?: unknown }[];
+}
+
+/** A category tag staff created for transactions, e.g. "Boat hire". */
+export interface TxnTag {
+  id: string;
+  ngoId: string;
+  name: string;
+  color: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+/** What staff added to one transaction later. The ledger entry itself never changes. */
+export interface EntryMeta {
+  tagIds?: string[];
+  docs?: { fileId: string; kind: "invoice" | "receipt" | "other"; byId: string; byName: string; at: string }[];
 }
 
 // ------------------------------------------------------- Public embeds ----
@@ -523,14 +565,23 @@ export interface PayPalAccount {
   /** The PayPal login the account belongs to, shown so staff can tell accounts apart. */
   email?: string;
   env: "sandbox" | "live";
-  /** "simulated" accounts move no money: for demos and trying ClearAid without PayPal keys. */
-  mode: "live" | "simulated";
+  /**
+   * "live": ClearAid holds this account's own REST app keys. "partner": the NGO
+   * logged in to PayPal and granted ClearAid's partner app permission to take
+   * payments and refund on its behalf (no keys stored). "simulated" accounts
+   * move no money: for demos and trying ClearAid without PayPal keys.
+   */
+  mode: "live" | "partner" | "simulated";
+  /** "partner" accounts: the NGO's PayPal merchant ID, and how its sign-up through PayPal went. */
+  merchantId?: string;
+  onboarding?: { startedAt: string; finishedAt?: string; paymentsReceivable?: boolean; emailConfirmed?: boolean; permissions?: string[] };
   clientId?: string;
   /** AES-256-GCM encrypted REST app secret. Never sent to the browser. */
   clientSecretEnc?: string;
   /** Webhook ID from the PayPal app, to verify webhooks sent to /api/paypal/webhook?account=<id>. */
   webhookId?: string;
-  status: "active" | "disconnected";
+  /** "pending": a "partner" account whose owner hasn't finished logging in to PayPal yet. */
+  status: "active" | "disconnected" | "pending";
   createdAt: string;
   createdBy: string;
 }
@@ -551,12 +602,25 @@ export interface BankAccount {
   csvMapping?: CsvMapping;
   /** Description patterns (case-insensitive substrings) that mark a line as a bank fee, e.g. "SERVICE CHARGE". */
   feePatterns: string[];
+  /** PayPal accounts whose withdrawals land in this bank account ("pp_default" is the main one). Their deposits are transfers, not new money. */
+  transfersFrom?: string[];
   plaid?: {
     itemId: string;
     /** AES-256-GCM encrypted access token. Never sent to the browser. */
     accessTokenEnc: string;
     cursor?: string;
     accounts: { id: string; name: string; mask?: string }[];
+    /**
+     * The Plaid account (checking, savings…) this ClearAid account follows. One
+     * bank login (a Plaid "item") can hold several; each gets its own ClearAid
+     * account and they share the item's token and cursor. Missing on older
+     * connections: the account takes every transaction of its item.
+     */
+    accountId?: string;
+    /** The webhook URL Plaid was last given for this bank login (updated when the public address changes). */
+    webhookUrl?: string;
+    /** Whether Plaid can still read this bank, from sync errors and Plaid's webhooks. */
+    health?: { status: "ok" | "reconnect" | "error"; reason?: string; at: string };
     /** Simulated connection used when no Plaid keys are configured. */
     simulated: boolean;
   };
@@ -590,7 +654,8 @@ export interface BankAllocation {
 }
 
 /** "matched": the line is the bank side of a payment staff already declared, so it isn't posted again. */
-export type BankTxnStatus = "auto_tagged" | "tagged" | "untagged" | "fee_unallocated" | "matched";
+/** "transfer": money moved between the NGO's own accounts (e.g. a PayPal withdrawal reaching the bank). Already counted; never on a fund. */
+export type BankTxnStatus = "auto_tagged" | "tagged" | "untagged" | "fee_unallocated" | "matched" | "transfer";
 
 export interface BankTxn {
   id: string;
@@ -628,6 +693,10 @@ export interface BankTxn {
   receipts?: BankReceipt[];
   /** The declared payment this line was matched to (status "matched"). */
   paymentId?: string;
+  /** A transfer in from one of the NGO's PayPal accounts (status "transfer"). */
+  transfer?: { paypalAccountId: string; how: "rule" | "manual"; byName?: string; at: string };
+  /** Someone said this line isn't a transfer: the rule leaves it alone from then on. */
+  notTransfer?: boolean;
   /** Previous allocations, newest last, kept when a transaction is retagged. */
   history: { allocations: BankAllocation[]; by: string; at: string; reason?: string; approvedBy?: string }[];
   createdAt: string;
@@ -703,6 +772,14 @@ export type AuditAction =
   | "payment.matched"
   | "payment.unlinked"
   | "payment.voided"
+  | "payment.paypal_sent"
+  | "transaction.tagged"
+  | "transaction.document_added"
+  | "transaction.document_removed"
+  | "tag.created"
+  | "tag.updated"
+  | "tag.deleted"
+  | "member.payments_permission_changed"
   | "payment.receipt_attached"
   | "refund.issued"
   | "export.transactions"
@@ -717,12 +794,17 @@ export type AuditAction =
   | "bank.account_updated"
   | "bank.imported"
   | "bank.synced"
+  | "bank.reconnect_needed"
+  | "bank.reconnected"
   | "bank.tagged"
   | "bank.retagged"
   | "bank.tag_requested"
   | "bank.tag_approved"
   | "bank.tag_rejected"
   | "bank.receipt_added"
+  | "bank.transfer_marked"
+  | "bank.transfer_unmarked"
+  | "bank.paypal_link_changed"
   | "ngo.controls_updated"
   | "fund.codes_updated"
   | "embed.created"
@@ -755,7 +837,8 @@ export interface Session {
 
 // ---------------------------------------------------- Declared payments ----
 
-export type PaymentMethod = "bank_transfer" | "card" | "cheque" | "cash" | "other";
+/** "paypal": sent from ClearAid as a PayPal payout from the fund's PayPal account. */
+export type PaymentMethod = "bank_transfer" | "card" | "cheque" | "cash" | "other" | "paypal";
 
 /**
  * Money out that staff declared by hand from a receipt or invoice. It is posted
@@ -789,6 +872,8 @@ export interface DeclaredPayment {
   };
   /** awaiting_bank: paid from a bank account, its line hasn't arrived yet. no_bank: cash and the like. */
   status: "awaiting_bank" | "matched" | "no_bank" | "void";
+  /** method "paypal": the payout ClearAid sent (its status follows PayPal's payout webhooks). */
+  payout?: { accountId: string; email: string; batchId: string; status: string; live: boolean };
   bankTxnId?: string;
   matchedAt?: string;
   matchedBy?: string;

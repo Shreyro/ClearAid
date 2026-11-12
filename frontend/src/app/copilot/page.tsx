@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Bot, ChevronDown, Loader2, Lock, Send } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, Loader2, Lock, MessageSquarePlus, Send, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
 import { api, useJson } from "@/components/hooks";
 
 type Status = {
   model: string;
+  power?: "awake" | "asleep" | "waking";
   modelStatus: { ok: boolean; error?: string };
   search: { ok: boolean; error?: string };
   lastSync: { at: string; ok: boolean; error?: string; docs: number } | null;
@@ -17,7 +18,8 @@ type Status = {
   includesUntraced: boolean;
 };
 type Source = { n: number; id: string; fundTitle?: string; kind: string; date?: string; href?: string; text: string };
-type Reply = { reply: string; sources: Source[]; scope: { funds: { id: string; title: string }[]; narrowed: boolean }; search: "faiss" | "keyword"; model: string };
+type ChatItem = { id: string; title: string; updatedAt: string; count: number };
+type Reply = { reply: string; sources: Source[]; scope: { funds: { id: string; title: string }[]; narrowed: boolean }; search: "faiss" | "keyword"; model: string; chatId?: string };
 type Msg = { role: "user" | "assistant"; text: string; reply?: Reply };
 
 /** Bold (**x**) and [n] citations; plain text otherwise (no HTML from the model). */
@@ -42,7 +44,9 @@ function Rich({ text, sources }: { text: string; sources?: Source[] }) {
 
 export default function CopilotPage() {
   const { me } = useMe();
-  const { data: status } = useJson<Status>("/api/copilot");
+  const { data: status, reload: reloadStatus } = useJson<Status>("/api/copilot");
+  const { data: chatList, reload: reloadChats } = useJson<{ chats: ChatItem[] }>("/api/copilot/chats");
+  const [chatId, setChatId] = useState<string | null>(null);
   const [fundId, setFundId] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -61,15 +65,58 @@ export default function CopilotPage() {
     setBusy(true);
     setError(null);
     setInput("");
-    const history = msgs.map((m) => ({ role: m.role, text: m.text }));
     setMsgs((m) => [...m, { role: "user", text: q }]);
     try {
-      const r = await api<Reply>("/api/copilot", { json: { message: q, fundId: fundId || undefined, history } });
+      const r = await api<Reply>("/api/copilot", { json: { message: q, fundId: fundId || undefined, chatId: chatId ?? undefined } });
       setMsgs((m) => [...m, { role: "assistant", text: r.reply, reply: r }]);
+      if (r.chatId) setChatId(r.chatId);
+      void reloadChats();
     } catch (e) {
+      // Not answered (e.g. the AI is waking up): take the question back so it can be sent again.
+      setMsgs((m) => m.slice(0, -1));
+      setInput(q);
       setError((e as Error).message);
+      void reloadStatus();
     } finally {
       setBusy(false);
+    }
+  }
+
+  // While the AI starts up, check every few seconds so the banner clears when it's ready.
+  const waking = status?.power === "waking";
+  useEffect(() => {
+    if (!waking) return;
+    const t = setInterval(() => void reloadStatus(), 8000);
+    return () => clearInterval(t);
+  }, [waking, reloadStatus]);
+
+  function newChat() {
+    if (busy) return;
+    setChatId(null);
+    setMsgs([]);
+    setError(null);
+  }
+
+  async function openChat(id: string) {
+    if (busy || id === chatId) return;
+    setError(null);
+    try {
+      const c = await api<{ id: string; messages: { role: "user" | "assistant"; text: string; reply?: Reply }[] }>(`/api/copilot/chats/${id}`);
+      setChatId(c.id);
+      setMsgs(c.messages.map((m) => ({ role: m.role, text: m.text, reply: m.reply })));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function removeChat(id: string) {
+    if (busy) return;
+    try {
+      await api("/api/copilot/chats", { json: { action: "delete", id } });
+      if (id === chatId) newChat();
+      void reloadChats();
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -83,14 +130,34 @@ export default function CopilotPage() {
         "What bank money isn't on any fund yet?",
       ];
 
-  const offline = status && (!status.modelStatus.ok || !status.search.ok);
+  const offline = status && !status.power && (!status.modelStatus.ok || !status.search.ok);
 
   return (
     <Page
       title="Copilot"
       subtitle={`Ask where money came from and where it went. Answers come from a local ${status?.model ?? "Llama"} model searching ClearAid's records with FAISS; nothing leaves this machine.`}
     >
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-6">
+      <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_280px] gap-6">
+        <nav className="card flex flex-col self-start lg:h-[600px]" aria-label="Your chats">
+          <div className="p-3 border-b border-line">
+            <button className="btn w-full justify-center" onClick={newChat} disabled={busy}>
+              <MessageSquarePlus className="h-4 w-4" /> New chat
+            </button>
+          </div>
+          <ul className="flex-1 overflow-y-auto p-2 space-y-0.5 max-h-48 lg:max-h-none">
+            {chatList && !chatList.chats.length && <li className="px-2 py-3 text-xs text-muted">Your past chats will show up here.</li>}
+            {chatList?.chats.map((c) => (
+              <li key={c.id} className={clsx("group flex items-center rounded-lg", c.id === chatId ? "bg-hover-soft" : "hover:bg-hover-soft")}>
+                <button className="flex-1 min-w-0 text-left px-2.5 py-2 text-sm truncate" onClick={() => void openChat(c.id)} title={c.title} aria-current={c.id === chatId}>
+                  {c.title}
+                </button>
+                <button className="p-1.5 mr-1 text-muted hover:text-critical opacity-0 group-hover:opacity-100 focus:opacity-100" onClick={() => void removeChat(c.id)} aria-label={`Delete chat: ${c.title}`}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
         <section className="card flex flex-col" style={{ height: 600 }}>
           <div className="px-4 py-3 border-b border-line flex flex-wrap items-center gap-2">
             <Bot className="h-4 w-4 text-brand" />
@@ -167,6 +234,18 @@ export default function CopilotPage() {
         </section>
 
         <aside className="space-y-4 self-start">
+          {status?.power === "asleep" && (
+            <div className="card p-4 text-xs">
+              <div className="font-semibold">The AI is asleep</div>
+              <p className="mt-1 text-ink-2">It switches off when nobody has used it for a while, to save cost. Ask a question and it wakes up; the first answer takes 1–2 minutes.</p>
+            </div>
+          )}
+          {waking && (
+            <div className="card p-4 text-xs">
+              <div className="font-semibold flex items-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" /> The AI is waking up</div>
+              <p className="mt-1 text-ink-2">Loading the model. Ask again in a minute or two; this page updates when it&apos;s ready.</p>
+            </div>
+          )}
           {offline && (
             <div className="card p-4 text-xs border-warn-line bg-warn-soft">
               <div className="font-semibold flex items-center gap-1.5 text-warn-ink"><AlertTriangle className="h-4 w-4" /> Copilot is partly offline</div>

@@ -265,6 +265,8 @@ type Payment = {
   description: string;
   status: "awaiting_bank" | "matched" | "no_bank" | "void";
   receipt?: { url: string; fileName: string; edited?: string[] };
+  /** Sent by PayPal from ClearAid. */
+  payout?: { email: string; status: string; live: boolean; account: string };
   bankLine?: { id: string; date: string; description: string };
   byId: string;
   byName: string;
@@ -346,6 +348,7 @@ export function DeclaredPayments({ meId, isAdmin, onChanged }: { meId: string; i
                     {p.fundTitle}{p.category ? ` · ${CAT_LABEL[p.category] ?? p.category}` : ""} · {p.date} · {p.methodLabel}{p.invoiceNumber ? ` · No. ${p.invoiceNumber}` : ""} · by {p.byName}
                   </div>
                   {p.bankLine && <div className="text-xs text-ink-2 mt-0.5">Bank line: {p.bankLine.date} &ldquo;{p.bankLine.description}&rdquo;</div>}
+                  {p.payout && <div className="text-xs text-ink-2 mt-0.5">PayPal payout to {p.payout.email} from &ldquo;{p.payout.account}&rdquo;{p.payout.live ? ` · PayPal status: ${p.payout.status.toLowerCase()}` : " · simulated"}</div>}
                   {p.receipt?.edited?.length ? <div className="text-xs text-warn-ink mt-0.5">Changed from the receipt: {p.receipt.edited.join(", ")}</div> : null}
                   {p.status === "void" && <div className="text-xs text-critical mt-0.5">Voided by {p.voidedBy}: {p.voidReason}</div>}
                 </div>
@@ -366,7 +369,7 @@ export function DeclaredPayments({ meId, isAdmin, onChanged }: { meId: string; i
                       <Link2Off className="h-3.5 w-3.5" /> Unlink
                     </button>
                   )}
-                  {p.status !== "void" && (isAdmin || p.byId === meId) && (
+                  {p.status !== "void" && !p.payout && (isAdmin || p.byId === meId) && (
                     <button className="btn btn-ghost !py-1 text-xs text-critical" disabled={busy === p.id} onClick={() => { setVoiding(voiding === p.id ? null : p.id); setReason(""); }}>Void</button>
                   )}
                 </div>

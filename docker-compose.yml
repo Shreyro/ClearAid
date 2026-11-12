@@ -3,16 +3,19 @@
 #   web      Next.js UI, the only service published to the host. It proxies /api/* to the API.
 #   backend  Hono API + JSON store (volume clearaid-data).
 #   rag      FAISS retrieval service for the Copilot (volume clearaid-rag).
-#   ollama   Local models: embeddings for rag, Llama for Copilot answers (volume clearaid-models).
-#   models   One-shot jobs that pull the two models into the ollama volume.
+#   ollama   Local models: embeddings for rag, Llama for everything else (volume clearaid-models).
+#   models   One-shot jobs that pull the models into the ollama volume.
+#   tunnel   Optional public HTTPS address (Cloudflare quick tunnel) for webhooks and bank logins.
 #
 # Start:   docker compose up -d --build        then open http://localhost:3000
 # Logs:    docker compose logs -f backend rag
 # Stop:    docker compose down                 (data stays in the volumes; add -v to wipe it)
+# With a public address: node scripts/prod-local.mjs   (starts the tunnel and wires its URL in)
 #
 # Settings come from ./.env (copy .env.example) and API keys from ./backend/.env.
-# The first start downloads the models (~5 GB); the app is usable before that
-# finishes, and the Copilot starts answering once the chat model is in.
+# Profiles (COMPOSE_PROFILES in .env): "ollama" runs Ollama in a container and
+# downloads the models (~10 GB); leave it out and set OLLAMA_URL to use an
+# Ollama already running on the host. "tunnel" adds the public address.
 
 name: clearaid
 
@@ -46,7 +49,11 @@ services:
       HOST: 0.0.0.0
       APP_URL: ${PUBLIC_URL:-http://localhost:3000}
       SESSION_SECRET: ${SESSION_SECRET:-} # empty: a random one is generated once and kept in the data volume
-      OLLAMA_URL: http://ollama:11434
+      # Banks that log in on their own site return to PUBLIC_URL/oauth/plaid; Plaid's webhooks go to PUBLIC_URL/api/plaid/webhook.
+      PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+      PLAID_WEBHOOK_URL: ${PLAID_WEBHOOK_URL:-}
+      # The ollama container, or an Ollama on the host (http://host.docker.internal:11434).
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       COPILOT_MODEL: ${COPILOT_MODEL:-llama3.1:8b}
       LOCAL_VISION_MODEL: ${LOCAL_VISION_MODEL:-llava}
       RAG_URL: http://rag:8790
@@ -63,21 +70,26 @@ services:
     build: ./rag
     image: clearaid-rag
     environment:
-      OLLAMA_URL: http://ollama:11434
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       RAG_TOKEN: ${RAG_TOKEN:-}
+      OCR_GPU: "0"
     volumes:
       - clearaid-rag:/index
     depends_on:
+      # Only when the "ollama" profile runs Ollama in a container.
       ollama:
         condition: service_healthy
+        required: false
       models-embed:
         condition: service_completed_successfully
+        required: false
     networks: [internal]
     restart: unless-stopped
 
   ollama:
     image: *ollama-image
+    profiles: [ollama]
     environment:
       OLLAMA_KEEP_ALIVE: 30m # keep the chat model loaded between questions
     volumes:
@@ -99,6 +111,7 @@ services:
   # Small (~270 MB): search needs it, so rag waits for it.
   models-embed:
     image: *ollama-image
+    profiles: [ollama]
     entrypoint: ["ollama", "pull", "${EMBED_MODEL:-nomic-embed-text}"]
     environment:
       OLLAMA_HOST: http://ollama:11434
@@ -111,6 +124,7 @@ services:
   # Large (~4.9 GB): nothing waits for it. Watch with: docker compose logs -f models-chat
   models-chat:
     image: *ollama-image
+    profiles: [ollama]
     entrypoint: ["ollama", "pull", "${COPILOT_MODEL:-llama3.1:8b}"]
     environment:
       OLLAMA_HOST: http://ollama:11434
@@ -123,6 +137,7 @@ services:
   # Only for reading receipt and photo images. Nothing waits for it either.
   models-vision:
     image: *ollama-image
+    profiles: [ollama]
     entrypoint: ["ollama", "pull", "${LOCAL_VISION_MODEL:-llava}"]
     environment:
       OLLAMA_HOST: http://ollama:11434
@@ -131,6 +146,18 @@ services:
         condition: service_healthy
     networks: [internal]
     restart: "no"
+
+  # A public HTTPS address for the UI (and, through it, the API): PayPal and
+  # Plaid webhooks and banks that log in on their own site need one. A quick
+  # tunnel's address changes on every start; scripts/prod-local.mjs reads it
+  # and sets PUBLIC_URL and the Plaid URLs. For a fixed address, use a named
+  # Cloudflare tunnel or a real host instead.
+  tunnel:
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:-2026.10.5}
+    profiles: [tunnel]
+    command: ["tunnel", "--no-autoupdate", "--url", "http://web:3000"]
+    networks: [edge]
+    restart: unless-stopped
 
 networks:
   # Only the UI sits on the edge network with a published port.

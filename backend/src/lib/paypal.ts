@@ -17,6 +17,14 @@ export type PayPalConn = {
   clientId: string;
   clientSecret: string;
   webhookId: string;
+  /**
+   * A "partner" account: the keys are ClearAid's partner app, and calls are
+   * made on behalf of this merchant (orders name it as payee; refunds carry a
+   * PayPal-Auth-Assertion for it).
+   */
+  actAs?: string;
+  /** PayPal partner attribution (BN) code sent with every call, if set. */
+  bnCode?: string;
 };
 
 export const paypalBase = (env: PayPalConn["env"]) => (env === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com");
@@ -50,7 +58,11 @@ export async function checkCredentials(c: PayPalConn) {
   await accessToken(c);
 }
 
-async function api<T>(c: PayPalConn, path: string, init: { method?: string; body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
+/** Unsigned JWT PayPal uses to say "this call is on behalf of merchant X" (only valid with the partner app's own token). */
+export const authAssertion = (clientId: string, merchantId: string) =>
+  `${Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")}.${Buffer.from(JSON.stringify({ iss: clientId, payer_id: merchantId })).toString("base64url")}.`;
+
+async function api<T>(c: PayPalConn, path: string, init: { method?: string; body?: unknown; idempotencyKey?: string; asMerchant?: boolean } = {}): Promise<T> {
   const token = await accessToken(c);
   const res = await fetch(`${paypalBase(c.env)}${path}`, {
     method: init.method ?? "GET",
@@ -59,6 +71,8 @@ async function api<T>(c: PayPalConn, path: string, init: { method?: string; body
       "Content-Type": "application/json",
       Prefer: "return=representation",
       ...(init.method && init.method !== "GET" ? { "PayPal-Request-Id": init.idempotencyKey ?? randomUUID() } : {}),
+      ...(init.asMerchant && c.actAs ? { "PayPal-Auth-Assertion": authAssertion(c.clientId, c.actAs) } : {}),
+      ...(c.bnCode ? { "PayPal-Partner-Attribution-Id": c.bnCode } : {}),
     },
     body: init.body ? JSON.stringify(init.body) : undefined,
   });
@@ -98,6 +112,8 @@ async function placeOrder(c: PayPalConn, args: { fundId: string; fundTitle: stri
         {
           reference_id: args.fundId,
           custom_id: args.reference,
+          // A "partner" account: the money goes to the NGO's own PayPal account.
+          ...(c.actAs ? { payee: { merchant_id: c.actAs } } : {}),
           description: `Donation to ${args.fundTitle}`.slice(0, 127),
           soft_descriptor: "CLEARAID",
           amount: {
@@ -127,6 +143,47 @@ async function placeOrder(c: PayPalConn, args: { fundId: string; fundTitle: stri
     },
   });
   return { id: order.id, status: order.status, live: true };
+}
+
+/**
+ * Sandbox only: a donation paid with PayPal's published test Visa, created and
+ * captured in one call (no buyer has to log in). The capture is real in the
+ * PayPal sandbox: it shows in the merchant's sandbox account and can be refunded.
+ * The receiving account must accept card payments (US sandbox business accounts do).
+ */
+export async function sandboxCardDonation(c: PayPalConn, args: { amount: number; fundId: string; fundTitle: string; reference: string; payerName?: string }): Promise<CaptureResult> {
+  if (!c.live || c.env !== "sandbox") throw new PayPalError("Test-card donations only run against a live PayPal sandbox account", 400);
+  const value = toValue(args.amount);
+  type Res = { id: string; status: string; purchase_units: { payments?: { captures?: { id: string; status: string; amount: { value: string } }[] } }[] };
+  const r = await api<Res>(c, "/v2/checkout/orders", {
+    method: "POST",
+    body: {
+      intent: "CAPTURE",
+      purchase_units: [
+        {
+          reference_id: args.fundId,
+          custom_id: args.reference,
+          description: `Donation to ${args.fundTitle}`.slice(0, 127),
+          soft_descriptor: "CLEARAID",
+          ...(c.actAs ? { payee: { merchant_id: c.actAs } } : {}),
+          amount: { currency_code: "USD", value },
+        },
+      ],
+      payment_source: {
+        card: {
+          // PayPal's published sandbox test card.
+          number: "4111111111111111",
+          expiry: "2030-12",
+          security_code: "123",
+          name: args.payerName || "Sandbox Donor",
+          billing_address: { address_line_1: "1 Main St", admin_area_2: "San Jose", admin_area_1: "CA", postal_code: "95131", country_code: "US" },
+        },
+      },
+    },
+  });
+  const cap = r.purchase_units?.[0]?.payments?.captures?.[0];
+  if (!cap || cap.status !== "COMPLETED") throw new PayPalError(`PayPal didn't complete the test payment (${cap?.status ?? r.status})`, 402, r);
+  return { orderId: r.id, captureId: cap.id, status: cap.status, amount: Math.round(Number(cap.amount.value) * 100), live: true };
 }
 
 export interface CaptureResult {
@@ -171,6 +228,7 @@ export async function refundCapture(c: PayPalConn, captureId: string, amount: nu
   }
   const r = await api<{ id: string; status: string }>(c, `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
     method: "POST",
+    asMerchant: true,
     body: { amount: { currency_code: "USD", value: toValue(amount) }, note_to_payer: note.slice(0, 255) },
   });
   return { id: r.id, status: r.status, live: true };
@@ -189,6 +247,7 @@ export async function sendVendorPayout(c: PayPalConn, args: { withdrawalId: stri
  */
 export async function sendPayout(c: PayPalConn, args: { itemId: string; email: string; amount: number; note: string; subject: string; message: string }) {
   if (!c.live) return { batchId: sim("PAYOUT"), status: "SUCCESS", live: false };
+  if (c.actAs) throw new PayPalError("PayPal doesn't let ClearAid send payouts from an account connected by login. Send this one from the PayPal account itself, then record it.", 400);
   const r = await api<{ batch_header: { payout_batch_id: string; batch_status: string } }>(c, "/v1/payments/payouts", {
     method: "POST",
     idempotencyKey: `payout-${args.itemId}`,

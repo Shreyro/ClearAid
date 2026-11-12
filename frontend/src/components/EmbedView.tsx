@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowDownLeft, ArrowUpRight, MapPin, ShieldCheck } from 
 import clsx from "clsx";
 import { usd } from "./hooks";
 import { DonateForm } from "./DonateForm";
-import { CumulativeChart } from "./Charts";
+import { CumulativeChart, HBarChart } from "./Charts";
 import { Sankey, type FlowGraph } from "./Sankey";
 import type { EmbedTheme } from "./embedTheme";
 import { Pill, Stat } from "./ui";
@@ -57,33 +57,10 @@ const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en
 
 type Bar = { key: string; label: string; amount: number; note?: string; muted?: boolean };
 
-/** One series as horizontal bars: label and exact value in text, bar for comparison, share of the total on hover. */
-function BarList({ rows, color, of, empty }: { rows: Bar[]; color: string; of: string; empty: string }) {
-  const [hover, setHover] = useState<string | null>(null);
+/** One series as horizontal bars (AG Charts): exact value at the bar tip, share of the total on hover. */
+function BarList({ rows, color, of, empty }: { rows: Bar[]; color: "var(--series-1)" | "var(--series-2)"; of: string; empty: string }) {
   if (!rows.length) return <p className="text-sm text-muted">{empty}</p>;
-  const max = Math.max(...rows.map((r) => r.amount), 1);
-  const total = rows.reduce((a, r) => a + r.amount, 0);
-  return (
-    <ul className="space-y-2.5">
-      {rows.map((r) => (
-        <li key={r.key} className="relative outline-none" tabIndex={0} onPointerEnter={() => setHover(r.key)} onPointerLeave={() => setHover(null)} onFocus={() => setHover(r.key)} onBlur={() => setHover(null)}>
-          <div className="flex justify-between gap-3 text-sm">
-            <span className="text-ink-2 truncate" title={r.label}>{r.label}</span>
-            <span className="font-semibold tnum shrink-0">{usd(r.amount)}</span>
-          </div>
-          <div className="h-3 mt-1">
-            <div className="h-full" style={{ width: `${Math.max((r.amount / max) * 100, 0.5)}%`, background: r.muted ? "var(--line-strong)" : color, opacity: hover === null || hover === r.key ? 1 : 0.55, borderRadius: "0 4px 4px 0" }} />
-          </div>
-          {r.note && <div className="text-xs text-muted mt-1">{r.note}</div>}
-          {hover === r.key && (
-            <div className="pointer-events-none absolute right-0 -top-8 card shadow px-2.5 py-1.5 text-xs z-10 whitespace-nowrap">
-              <b className="tnum">{((r.amount / Math.max(total, 1)) * 100).toFixed(1)}%</b> <span className="text-ink-2">of {of}</span>
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+  return <HBarChart rows={rows} color={color === "var(--series-1)" ? "series-1" : "series-2"} of={of} ariaLabel={`${of}: ${rows.map((r) => `${r.label} ${usd(r.amount)}`).join(", ")}`} />;
 }
 
 /** One side of the flow diagram as bar rows: what came in, or where it went (spending first, then money returned or still held). Adds up across funds. */

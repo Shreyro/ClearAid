@@ -124,6 +124,7 @@ export function returnPlan(db: DB, fund: Fund, prefer: "auto" | "payout" = "auto
     const usableEmail = email && !email.endsWith("@donor.local") ? email : null;
     let blocker: string | undefined;
     if (method === "payout" && !usableEmail) blocker = "No PayPal email on record for a payout";
+    if (method === "payout" && account.mode === "partner") blocker = `PayPal doesn't let ClearAid send payouts from ${account.name} (connected by login): send it from that PayPal account and record it`;
     if (account.status !== "active") blocker = `${account.name} is disconnected`;
     rows.push({
       key,

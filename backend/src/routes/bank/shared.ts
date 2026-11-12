@@ -1,6 +1,7 @@
 import { publish } from "@/lib/events";
 import type { BankAccount, DB, LedgerEntry } from "@/lib/types";
 import { HttpError } from "@/lib/session";
+import { findPayPalAccount } from "@/lib/paypal-accounts";
 
 /** Push new ledger lines to live views, then a generic "bank changed" ping. */
 export function announce(entries: LedgerEntry[]) {
@@ -31,11 +32,18 @@ export function accountView(db: DB, a: BankAccount) {
     csvMapping: a.csvMapping,
     simulated: a.plaid?.simulated ?? false,
     subAccounts: a.plaid?.accounts.map((s) => ({ name: s.name, mask: s.mask })) ?? [],
+    /** Whether Plaid can still read this bank ("reconnect": an admin must log in to the bank again). */
+    health: a.plaid?.health ?? null,
+    /** PayPal accounts whose withdrawals land here (their deposits are transfers). */
+    transfersFrom: (a.transfersFrom ?? []).map((id) => ({ id, name: findPayPalAccount(db, a.ngoId, id)?.name ?? id })),
+    /** Other ClearAid accounts from the same bank login (they sync together). */
+    sameLogin: a.plaid ? db.bankAccounts.filter((x) => x.id !== a.id && x.status === "active" && x.plaid?.itemId === a.plaid!.itemId).map((x) => x.name) : [],
     counts: {
       total: txns.length,
       untagged: txns.filter((t) => t.status === "untagged").length,
       fees: txns.filter((t) => t.status === "fee_unallocated").length,
       tagged: txns.filter((t) => t.status === "tagged" || t.status === "auto_tagged").length,
+      transfers: txns.filter((t) => t.status === "transfer").length,
     },
     moneyIn: sum((t) => t.amount > 0),
     moneyOut: -sum((t) => t.amount < 0),

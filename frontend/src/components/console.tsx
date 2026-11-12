@@ -9,12 +9,13 @@ import { Empty, Pill, RiskBadge, Section, StatusIcon, StatusPill } from "@/compo
 import { CAT_LABEL, type WView } from "@/components/SpendCard";
 import { CodesEditor } from "@/components/banking";
 import type { PayPalAccount } from "@/components/PayPalAccounts";
+import { DataGrid } from "@/components/DataGrid";
 
 
 export type Role = "admin" | "user" | "donor";
 /** How each kind of login is named on screen. */
 export const roleName = (r: Role) => (r === "admin" ? "Admin" : r === "donor" ? "Donor" : "Staff");
-export type Member = { id: string; name: string; title: string; role: Role; ngoName: string };
+export type Member = { id: string; name: string; title: string; role: Role; ngoName: string; /** May send PayPal payments (admins always). */ canPay?: boolean };
 export type DemoLogin = { username: string; password: string; name: string; title: string; role: Role; note: string };
 export type Sess = { session: { role: string; id?: string; name?: string; member?: Member | null }; demoLogins: DemoLogin[] };
 
@@ -243,7 +244,7 @@ type AccessFund = {
   gap: string | null;
 };
 type AccessRequest = { id: string; fundId: string; fundTitle: string; member: { id: string; name: string }; note?: string; status: string; createdAt: string; decidedBy?: string; decidedAt?: string };
-type TeamMember = { id: string; name: string; title: string; role: Role; active: boolean; username?: string; createdAt: string; fundIds: string[]; viewFundIds?: string[] };
+type TeamMember = { id: string; name: string; title: string; role: Role; active: boolean; username?: string; createdAt: string; fundIds: string[]; viewFundIds?: string[]; canPay?: boolean };
 
 function useAccess() {
   const access = useJson<{ funds: AccessFund[]; requests: AccessRequest[] }>("/api/ngo/assignments");
@@ -474,31 +475,26 @@ export function FundAdmin() {
       {creating && <CreateFund onCreated={() => { setCreating(false); void reload(); }} funds={data?.funds ?? []} />}
       {msg && <div className="card p-3 text-sm bg-brand-wash border-brand-line">{msg}</div>}
       <div className="card overflow-x-auto">
-        <table className="w-full text-sm min-w-[1040px]">
-          <thead>
-            <tr className="text-left text-xs text-muted border-b border-line">
-              <th className="px-4 py-2.5 font-medium">Fund</th>
-              <th className="px-4 py-2.5 font-medium">Tracking codes</th>
-              <th className="px-4 py-2.5 font-medium">PayPal account</th>
-              <th className="px-4 py-2.5 font-medium" title="Donors may ask, when they give, for their share of whatever is left when the fund closes">Leftover back to donors</th>
-              <th className="px-4 py-2.5 font-medium text-right">In</th>
-              <th className="px-4 py-2.5 font-medium text-right">Out</th>
-              <th className="px-4 py-2.5 font-medium text-right">Held</th>
-              <th className="px-4 py-2.5 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.funds.map((f) => (
-              <tr key={f.id} className="border-b border-line last:border-0">
-                <td className="px-4 py-3"><Link className="font-medium hover:underline" href={`/funds/${f.slug}`}>{f.title}</Link><div className="text-xs text-muted">{f.donors} payers</div></td>
-                <td className="px-4 py-3"><CodesEditor fundId={f.id} codes={f.trackingCodes} editable={f.status !== "closed"} onSaved={(m) => { setMsg(m); void reload(); }} /></td>
-                <td className="px-4 py-3">
+        <DataGrid
+          rows={data?.funds ?? []}
+          rowId={(f) => f.id}
+          minWidth={1000}
+          ariaLabel="Funds"
+          cols={[
+            { header: "Fund", flex: 1, minWidth: 140, wrap: true, value: (f) => f.title, render: (f) => <div><Link className="font-medium hover:underline" href={`/funds/${f.slug}`}>{f.title}</Link><div className="text-xs text-muted">{f.donors} payers</div></div> },
+            { header: "Tracking codes", width: 180, wrap: true, sortable: false, render: (f) => <div className="py-1"><CodesEditor fundId={f.id} codes={f.trackingCodes} editable={f.status !== "closed"} onSaved={(m) => { setMsg(m); void reload(); }} /></div> },
+            {
+              header: "PayPal account",
+              width: 190,
+              sortable: false,
+              render: (f) => (
+                <>
                   {f.status === "closed" || !pp ? (
                     <span className="text-xs text-ink-2">{pp?.accounts.find((a) => a.id === f.paypalAccountId)?.name ?? "—"}</span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       <select
-                        className="input !py-1 !w-auto max-w-[14rem] text-sm"
+                        className="input !py-1 !w-auto max-w-[10.5rem] text-sm"
                         value={f.paypalAccountId}
                         disabled={saving === f.id}
                         onChange={(e) => void setAccount(f.id, e.target.value)}
@@ -511,8 +507,16 @@ export function FundAdmin() {
                       {saving === f.id && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
                     </span>
                   )}
-                </td>
-                <td className="px-4 py-3">
+                </>
+              ),
+            },
+            {
+              header: "Leftover back to donors",
+              width: 125,
+              wrap: true,
+              sortable: false,
+              render: (f) => (
+                <div>
                   <label className="inline-flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -525,15 +529,16 @@ export function FundAdmin() {
                     {saving === `ret:${f.id}` && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
                   </label>
                   {f.returnOptIns ? <div className="text-xs text-muted">{f.returnOptIns} donor{f.returnOptIns === 1 ? "" : "s"} asked</div> : null}
-                </td>
-                <td className="px-4 py-3 text-right tnum">{usd(f.raised)}{f.bankIn ? <div className="text-xs text-muted">{usd(f.bankIn)} via bank</div> : null}</td>
-                <td className="px-4 py-3 text-right tnum">{usd(f.spent)}</td>
-                <td className="px-4 py-3 text-right tnum font-semibold">{usd(f.balance)}</td>
-                <td className="px-4 py-3"><StatusPill status={f.status} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                
+                </div>
+              ),
+            },
+            { header: "In", width: 105, align: "right", wrap: true, value: (f) => f.raised, render: (f) => <div>{usd(f.raised)}{f.bankIn ? <div className="text-xs text-muted">{usd(f.bankIn)} via bank</div> : null}</div> },
+            { header: "Out", width: 95, align: "right", value: (f) => f.spent, render: (f) => usd(f.spent) },
+            { header: "Held", width: 100, align: "right", value: (f) => f.balance, render: (f) => <b>{usd(f.balance)}</b> },
+            { header: "Status", width: 140, wrap: true, value: (f) => f.status, render: (f) => <StatusPill status={f.status} /> },
+          ]}
+        />
       </div>
     </div>
   );
@@ -760,6 +765,7 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
                     {m.name}
                     {m.id === me.id && <span className="text-xs text-muted">(you)</span>}
                     <Pill tone={m.role === "admin" ? "brand" : "neutral"}>{roleName(m.role)}{m.role === "donor" && " · read-only"}</Pill>
+                    {m.active && m.canPay && <Pill tone="info">Can send PayPal payments</Pill>}
                     {!m.active && <Pill tone="bad">Deactivated</Pill>}
                   </div>
                   <div className="text-xs text-muted">
@@ -811,6 +817,17 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
                       >
                         {(["user", "admin", "donor"] as const).map((r) => <option key={r} value={r}>{roleName(r)}</option>)}
                       </select>
+                    )}
+                    {m.active && m.role === "user" && (
+                      <label className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-line px-2 py-1" title="Lets this person send PayPal payments from the funds they're assigned to (Transactions → Pay via PayPal)">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(m.canPay)}
+                          disabled={Boolean(busy)}
+                          onChange={(e) => void post(m.id + "pay", { action: "update", id: m.id, canPay: e.target.checked }, e.target.checked ? `${m.name} can now send PayPal payments from the funds they're on` : `${m.name} can no longer send PayPal payments`)}
+                        />
+                        Can send PayPal payments
+                      </label>
                     )}
                     {m.active && <button className="btn btn-ghost !py-1 text-xs" disabled={Boolean(busy)} onClick={() => { setResetFor(resetFor === m.id ? null : m.id); setNewPassword(suggestPassword()); }}>Reset password</button>}
                     <button className={clsx("btn !py-1 text-xs", m.active ? "btn-danger" : "btn-ghost")} disabled={Boolean(busy)} onClick={() => post(m.id + "act", { action: "update", id: m.id, active: !m.active }, m.active ? `${m.name} was deactivated and removed from their funds` : `${m.name} was reactivated`)}>

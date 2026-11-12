@@ -24,6 +24,7 @@ export const PAYMENT_METHODS: Record<PaymentMethod, string> = {
   cheque: "Cheque",
   cash: "Cash",
   other: "Other (no bank line)",
+  paypal: "PayPal payout",
 };
 
 /** Methods that leave the NGO's bank account, so a bank line should follow. */
@@ -135,6 +136,8 @@ export function paymentView(db: DB, p: DeclaredPayment) {
     status: p.status,
     receipt: p.receipt && { ...p.receipt, fileName: file?.name ?? "receipt", url: `/api/files/${p.receipt.fileId}` },
     bankLine: t ? { id: t.id, date: t.date, description: t.description, amount: t.amount } : undefined,
+    // Sent by PayPal from ClearAid: to whom, from which account, and PayPal's status.
+    payout: p.payout && { email: p.payout.email, status: p.payout.status, live: p.payout.live, account: db.paypalAccounts?.find((a) => a.id === p.payout!.accountId)?.name ?? "Main PayPal account" },
     matchedAt: p.matchedAt,
     matchedBy: p.matchedBy,
     byId: p.byId,

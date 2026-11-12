@@ -782,6 +782,254 @@
           ]
         },
         {
+          "name": "Signed out: POST /api/bank/plaid is refused",
+          "description": "[plaid]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/plaid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "plaid"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"sync_all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signed out: test-card gift is refused",
+          "description": "[clean]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/cyclone-asha/test-card",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "cyclone-asha",
+                "test-card"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsd\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signed out: GET /api/transactions/tags is refused",
+          "description": "[meta]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signed out: GET /api/copilot/chats is refused",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signed out: GET /api/copilot/chats/:id is refused",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats/chat_x",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats",
+                "chat_x"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signed out: POST /api/copilot/chats is refused",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"delete\",\n  \"id\": \"chat_x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Unknown route",
           "request": {
             "method": "GET",
@@ -3288,6 +3536,137 @@
           ]
         },
         {
+          "name": "Allow Daniel to send PayPal payments",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngo/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngo",
+                "members"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"adm_daniel\",\n  \"canPay\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Team shows who can pay",
+          "description": "[pay]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngo/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngo",
+                "members"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"Daniel can\", () => { pm.expect(body.members.find((m) => m.id === \"adm_daniel\").canPay).to.equal(true); });",
+                  "pm.test(\"admins always can\", () => { for (const m of body.members.filter((x) => x.role === \"admin\")) pm.expect(m.canPay).to.equal(true); });",
+                  "pm.test(\"donors never can\", () => { for (const m of body.members.filter((x) => x.role === \"donor\")) pm.expect(m.canPay).to.equal(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment permission: not for admins",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngo/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngo",
+                "members"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"adm_priya\",\n  \"canPay\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Admin cannot remove own admin access",
           "request": {
             "method": "POST",
@@ -4807,6 +5186,288 @@
           ]
         },
         {
+          "name": "Sync all banks",
+          "description": "[plaid]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/plaid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "plaid"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"sync_all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"one result per bank login\", () => { pm.expect(body.results).to.be.an(\"array\").that.is.not.empty; for (const r of body.results) pm.expect(r.itemId).to.be.a(\"string\"); });",
+                  "pm.test(\"no errors\", () => { pm.expect(body.results.filter((r) => r.error)).to.eql([]); });",
+                  "pm.test(\"says what came in\", () => { pm.expect(body.imported).to.be.a(\"number\"); pm.expect(body.message).to.match(/bank login/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Connected banks show their health and sync settings",
+          "description": "[plaid]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"the feed is healthy\", () => { const a = body.accounts.find((x) => x.id === pm.collectionVariables.get(\"feedId\")); pm.expect(a.health.status).to.equal(\"ok\"); pm.expect(a.sameLogin).to.be.an(\"array\"); });",
+                  "pm.test(\"CSV accounts have no bank login\", () => { const a = body.accounts.find((x) => x.provider === \"csv\"); pm.expect(a.health).to.equal(null); });",
+                  "pm.test(\"reports how syncing works\", () => { pm.expect(body.plaid).to.include.keys(\"live\", \"env\", \"oauth\", \"webhooks\", \"autoSyncMinutes\"); pm.expect(body.plaid.live).to.equal(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in again: Plaid not configured",
+          "description": "[plaid]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/plaid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "plaid"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"link_token\",\n  \"accountId\": \"{{feedId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reconnected: Plaid not configured",
+          "description": "[plaid]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/plaid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "plaid"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"reconnected\",\n  \"accountId\": \"{{feedId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Plaid webhook: unsigned event",
+          "description": "[plaid]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/plaid/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "plaid",
+                "webhook"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_type\": \"TRANSACTIONS\",\n  \"webhook_code\": \"SYNC_UPDATES_AVAILABLE\",\n  \"item_id\": \"item_x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Plaid webhook: forged signature",
+          "description": "[plaid]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Plaid-Verification",
+                "value": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImsxIn0.eyJpYXQiOjE3MDAwMDAwMDB9.c2ln"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/plaid/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "plaid",
+                "webhook"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_type\": \"ITEM\",\n  \"webhook_code\": \"ERROR\",\n  \"item_id\": \"item_x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Tag a small line by hand",
           "request": {
             "method": "POST",
@@ -5586,6 +6247,556 @@
               }
             }
           ]
+        },
+        {
+          "name": "Find money in waiting for a tag",
+          "description": "[transfers]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions?status=untagged",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "untagged"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"there is one\", () => { const x = body.transactions.find((r) => r.amount > 0 && !r.pending); pm.expect(x).to.be.an(\"object\"); pm.collectionVariables.set(\"inLine\", x.id); });",
+                  "pm.test(\"transfers have their own tab\", () => { pm.expect(body.counts).to.have.property(\"transfers\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark it as a transfer from PayPal",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"mark_transfer\",\n  \"id\": \"{{inLine}}\",\n  \"paypalAccountId\": \"pp_default\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"explains it stays off funds\", () => { pm.expect(body.message).to.match(/counted twice/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A transfer can't be tagged to a fund",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"tag\",\n  \"id\": \"{{inLine}}\",\n  \"allocations\": [\n    {\n      \"fundId\": \"fund_asha\",\n      \"amountUsd\": 1\n    }\n  ],\n  \"reason\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"says why\", () => { pm.expect(body.error).to.match(/counted/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Transfers tab lists it",
+          "description": "[transfers]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions?status=transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "transfers"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"with where it came from\", () => { const x = body.transactions.find((r) => r.id === pm.collectionVariables.get(\"inLine\")); pm.expect(x.status).to.equal(\"transfer\"); pm.expect(x.transfer.paypalAccountId).to.equal(\"pp_default\"); pm.expect(x.transfer.how).to.equal(\"manual\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark it twice",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"mark_transfer\",\n  \"id\": \"{{inLine}}\",\n  \"paypalAccountId\": \"pp_default\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Not a transfer after all",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"not_transfer\",\n  \"id\": \"{{inLine}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"back in Untagged\", () => { pm.expect(body.message).to.match(/Untagged/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Not a transfer twice",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"not_transfer\",\n  \"id\": \"{{inLine}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark: PayPal account that isn't yours",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"mark_transfer\",\n  \"id\": \"{{inLine}}\",\n  \"paypalAccountId\": \"pp_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Link the bank account to the main PayPal account",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"{{bankId}}\",\n  \"transfersFrom\": [\n    \"pp_default\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"confirms the link\", () => { pm.expect(body.message).to.match(/receives withdrawals from/); pm.expect(body.account.transfersFrom.map((p) => p.id)).to.eql([\"pp_default\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Link: PayPal account that isn't yours",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"{{bankId}}\",\n  \"transfersFrom\": [\n    \"pp_nope\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PayPal accounts show what reached the bank",
+          "description": "[transfers]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"every account has a reconciliation\", () => { for (const a of body.accounts) pm.expect(a.reconciliation).to.include.keys(\"collected\", \"refunded\", \"paidOut\", \"toBank\", \"transfers\", \"stillInPayPal\", \"banks\"); });",
+                  "pm.test(\"the main account withdraws to the linked bank\", () => { const a = body.accounts.find((x) => x.id === \"pp_default\"); pm.expect(a.reconciliation.banks.map((b) => b.id)).to.include(pm.collectionVariables.get(\"bankId\")); });",
+                  "pm.test(\"still in PayPal adds up\", () => { for (const a of body.accounts) { const r = a.reconciliation; pm.expect(r.stillInPayPal).to.equal(r.collected - r.refunded - r.paidOut - r.toBank); } });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unlink the bank account again",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"{{bankId}}\",\n  \"transfersFrom\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"no link\", () => { pm.expect(body.account.transfersFrom).to.eql([]); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -6248,6 +7459,54 @@
           ]
         },
         {
+          "name": "Staff: cannot change who may pay",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngo/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngo",
+                "members"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"adm_daniel\",\n  \"canPay\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Staff: cannot approve a tag on a fund they are not on",
           "request": {
             "method": "POST",
@@ -6271,6 +7530,54 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"action\": \"approve\",\n  \"id\": \"{{pmBig}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff: cannot mark transfers",
+          "description": "[transfers]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"mark_transfer\",\n  \"id\": \"{{inLine}}\",\n  \"paypalAccountId\": \"pp_default\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6557,6 +7864,100 @@
                   "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff with permission pays from their fund",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"{{newFund}}\",\n  \"amountUsd\": 5,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"boats@vendors.example\",\n  \"description\": \"Boat hire for the supply run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"sent\", () => { pm.expect(body.payment.byName).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff with permission: not from a fund they're not on",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"{{handFund}}\",\n  \"amountUsd\": 15,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"boats@vendors.example\",\n  \"description\": \"Boat hire for the supply run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
                 ]
               }
             }
@@ -7152,6 +8553,608 @@
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
                   "pm.test(\"says how to start it\", () => { pm.expect(body.error).to.match(/Ollama/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chats: none yet",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"an empty list\", () => { pm.expect(body.chats).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A failed question isn't saved as a chat",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"still empty\", () => { pm.expect(body.chats.length).to.equal(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask in a chat that doesn't exist",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"and last month?\",\n  \"chatId\": \"chat_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask with an empty question",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Open a chat that doesn't exist",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats/chat_nope",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats",
+                "chat_nope"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete: no chat named",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"delete\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a chat that doesn't exist",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"delete\",\n  \"id\": \"chat_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename: needs a title",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"rename\",\n  \"id\": \"chat_nope\",\n  \"title\": \" \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename a chat that doesn't exist",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"rename\",\n  \"id\": \"chat_nope\",\n  \"title\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chats: unknown action",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"export\",\n  \"id\": \"chat_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in as maya (donor)",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"maya\",\n  \"password\": \"donor-demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"returns the member\", () => { pm.expect(body.member.name).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Donor can list their own chats",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"an empty list\", () => { pm.expect(body.chats).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Donor: open a chat that isn't theirs",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/chats/chat_nope",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "chats",
+                "chat_nope"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in as daniel again",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"daniel\",\n  \"password\": \"user-demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"returns the member\", () => { pm.expect(body.member.name).to.be.a(\"string\"); });"
                 ]
               }
             }
@@ -10129,6 +12132,1353 @@
           ]
         },
         {
+          "name": "Who may pay and from where",
+          "description": "[pay]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"admin may pay\", () => { pm.expect(body.canPay).to.equal(true); });",
+                  "pm.test(\"funds to pay from, with their PayPal account\", () => { pm.expect(body.payFrom.length).to.be.above(0); for (const f of body.payFrom) pm.expect(f).to.include.keys(\"id\", \"title\", \"account\", \"canSend\"); });",
+                  "pm.test(\"payees with their PayPal emails, for people who may pay\", () => { pm.expect(body.payees.length).to.be.above(0); for (const v of body.payees) pm.expect(v.paypalEmail).to.include(\"@\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay via PayPal",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"fund_asha\",\n  \"amountUsd\": 15,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"boats@vendors.example\",\n  \"description\": \"Boat hire for the supply run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"sent and recorded\", () => { pm.expect(body.payment.method).to.equal(\"paypal\"); pm.expect(body.payment.payout.email).to.equal(\"boats@vendors.example\"); });",
+                  "pm.test(\"simulated without PayPal keys\", () => { pm.expect(body.message).to.match(/simulated/); pm.expect(body.payment.payout.live).to.equal(false); });",
+                  "try { pm.collectionVariables.set(\"paypalPay\", body.payment.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay via PayPal: not a PayPal email",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"fund_asha\",\n  \"amountUsd\": 15,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"nope\",\n  \"description\": \"Boat hire for the supply run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay via PayPal: say what it's for",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"fund_asha\",\n  \"amountUsd\": 15,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"boats@vendors.example\",\n  \"description\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay via PayPal: over the single-payout limit",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"fund_asha\",\n  \"amountUsd\": 20000,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"boats@vendors.example\",\n  \"description\": \"Boat hire for the supply run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay via PayPal: unknown fund",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"paypal\",\n  \"fundId\": \"fund_nope\",\n  \"amountUsd\": 15,\n  \"payee\": \"Puri Boat Hire\",\n  \"email\": \"boats@vendors.example\",\n  \"description\": \"Boat hire for the supply run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A PayPal payout can't be declared by hand",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"fundId\": \"fund_asha\",\n  \"amountUsd\": 5,\n  \"payee\": \"X\",\n  \"date\": \"2026-11-01\",\n  \"method\": \"paypal\",\n  \"description\": \"Declared as a payout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"points to Pay via PayPal\", () => { pm.expect(body.error).to.match(/Pay via PayPal/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A sent PayPal payment can't be voided by hand",
+          "description": "[pay]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"void\",\n  \"id\": \"{{paypalPay}}\",\n  \"reason\": \"Changed my mind\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "It's listed with its payout",
+          "description": "[pay]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"with the PayPal account and status\", () => { const p = body.payments.find((x) => x.id === pm.collectionVariables.get(\"paypalPay\")); pm.expect(p.payout.account).to.be.a(\"string\"); pm.expect(p.methodLabel).to.equal(\"PayPal payout\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "It's counted against the PayPal account",
+          "description": "[pay]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"in what left the account\", () => { pm.expect(body.accounts.find((a) => a.id === \"pp_default\").reconciliation.paidOut).to.be.at.least(1500); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tags (none yet)",
+          "description": "[meta]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"an empty list and the colours\", () => { pm.expect(body.tags).to.be.an(\"array\"); pm.expect(body.colors.length).to.be.above(3); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a tag",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"name\": \"Boat hire\",\n  \"color\": \"sky\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"created\", () => { pm.expect(body.tag.name).to.equal(\"Boat hire\"); pm.expect(body.tag.color).to.equal(\"sky\"); });",
+                  "try { pm.collectionVariables.set(\"tagBoats\", body.tag.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a tag: name taken",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"name\": \"boat HIRE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a tag: too short",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"name\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Find money out missing its paperwork",
+          "description": "[meta]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?docs=missing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "docs",
+                  "value": "missing"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"only money out without documents\", () => { pm.expect(body.transactions.length).to.be.above(0); for (const r of body.transactions) { pm.expect(r.direction).to.equal(\"out\"); pm.expect(r.hasDocument).to.equal(false); } });",
+                  "pm.test(\"rows carry tags and documents for staff\", () => { pm.expect(body.transactions[0]).to.include.keys(\"tags\", \"docs\", \"hasDocument\"); pm.expect(body.tags).to.be.an(\"array\"); });",
+                  "try { pm.collectionVariables.set(\"lateKey\", body.transactions[0].id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tag the transaction",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"tags\",\n  \"key\": \"{{lateKey}}\",\n  \"tagIds\": [\n    \"{{tagBoats}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"tag on it\", () => { pm.expect(body.tags.map((x) => x.name)).to.eql([\"Boat hire\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tag: no change",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"tags\",\n  \"key\": \"{{lateKey}}\",\n  \"tagIds\": [\n    \"{{tagBoats}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tag: unknown tag",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"tags\",\n  \"key\": \"{{lateKey}}\",\n  \"tagIds\": [\n    \"tag_nope\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tag: unknown transaction",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"tags\",\n  \"key\": \"fund_asha:999999\",\n  \"tagIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter by tag",
+          "description": "[meta]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?tag={{tagBoats}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "tag",
+                  "value": "{{tagBoats}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"just the tagged one\", () => { pm.expect(body.transactions.map((r) => r.id)).to.eql([pm.collectionVariables.get(\"lateKey\")]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload the invoice that arrived later",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "scan"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "sample-late-invoice.png"
+                },
+                {
+                  "key": "read",
+                  "type": "text",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"lateFile\", body.fileId); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach the invoice to the transaction",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"key\": \"{{lateKey}}\",\n  \"fileId\": \"{{lateFile}}\",\n  \"kind\": \"invoice\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"attached\", () => { pm.expect(body.message).to.match(/attached/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "It's no longer missing its paperwork",
+          "description": "[meta]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?docs=missing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "docs",
+                  "value": "missing"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"gone from the list\", () => { pm.expect(body.transactions.map((r) => r.id)).to.not.include(pm.collectionVariables.get(\"lateKey\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach: same file again",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"key\": \"{{lateKey}}\",\n  \"fileId\": \"{{lateFile}}\",\n  \"kind\": \"receipt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach: not uploaded",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"attach\",\n  \"key\": \"{{lateKey}}\",\n  \"fileId\": \"file_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CSV export has tags and documents",
+          "description": "[meta]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?format=csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"has the columns\", () => { const head = pm.response.text().split(\"\\r\\n\")[0]; pm.expect(head).to.include(\"Tags\"); pm.expect(head).to.include(\"Documents\"); });",
+                  "pm.test(\"the tag is in it\", () => pm.expect(pm.response.text()).to.include(\"Boat hire\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename the tag",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update\",\n  \"id\": \"{{tagBoats}}\",\n  \"name\": \"Boat and truck hire\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove the invoice again",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"detach\",\n  \"key\": \"{{lateKey}}\",\n  \"fileId\": \"{{lateFile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"no documents\", () => { pm.expect(body.docs).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detach: not attached",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "meta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"detach\",\n  \"key\": \"{{lateKey}}\",\n  \"fileId\": \"{{lateFile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Test-card gift: fund's account isn't a live sandbox one",
+          "description": "[clean]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/give/cyclone-asha/test-card",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "give",
+                "cyclone-asha",
+                "test-card"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsd\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"says why\", () => { pm.expect(body.error).to.match(/sandbox/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "PayPal accounts",
           "request": {
             "method": "GET",
@@ -10156,6 +13506,138 @@
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"no secrets are sent\", () => { pm.expect(JSON.stringify(body)).to.not.match(/clientSecret|secretEnc/i); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Connect with PayPal is off without the partner app",
+          "description": "[partner]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"reports it\", () => { pm.expect(body.partner).to.equal(false); pm.expect(body.env).to.be.a(\"string\"); });",
+                  "pm.test(\"accounts say how they're connected\", () => { for (const a of body.accounts) pm.expect([\"live\", \"partner\", \"simulated\"]).to.include(a.mode); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Connect with PayPal: partner app not configured",
+          "description": "[partner]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"connect_start\",\n  \"name\": \"Postman login account\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"says what's missing\", () => { pm.expect(body.error).to.match(/partner app/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Finish connecting: partner app not configured",
+          "description": "[partner]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"connect_finish\",\n  \"id\": \"pp_nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
                 ]
               }
             }
@@ -10905,6 +14387,150 @@
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff can create a tag",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create\",\n  \"name\": \"Volunteer meals\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "try { pm.collectionVariables.set(\"tagMeals\", body.tag.id); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff can't delete someone else's tag",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"delete\",\n  \"id\": \"{{tagBoats}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff can delete their own tag",
+          "description": "[meta]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "tags"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"delete\",\n  \"id\": \"{{tagMeals}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"deleted\", () => { pm.expect(body.message).to.match(/deleted/); });"
                 ]
               }
             }
@@ -12764,6 +16390,157 @@
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
                   "pm.test(\"chain valid\", () => { pm.expect(body.chain.valid).to.equal(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset to a clean start",
+          "description": "[clean]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reset"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"clean\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"clean mode\", () => { pm.expect(body.mode).to.equal(\"clean\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "After a clean reset: funds open with no money",
+          "description": "[clean]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "funds"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"the funds are kept, all open\", () => { pm.expect(body.funds.length).to.be.above(0); for (const f of body.funds) pm.expect(f.status).to.equal(\"active\"); });",
+                  "pm.test(\"nothing raised or spent\", () => { for (const f of body.funds) { pm.expect(f.raised).to.equal(0); pm.expect(f.spent).to.equal(0); } });",
+                  "pm.test(\"tracking codes kept\", () => { pm.expect(body.funds.some((f) => f.trackingCodes.length)).to.equal(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "After a clean reset: no bank or extra PayPal accounts",
+          "description": "[clean]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bank/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bank",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"no bank accounts\", () => { pm.expect(body.accounts).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "After a clean reset: only the main PayPal account",
+          "description": "[clean]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/paypal/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paypal",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"just the main one\", () => { pm.expect(body.accounts.map((a) => a.id)).to.eql([\"pp_default\"]); });"
                 ]
               }
             }

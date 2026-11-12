@@ -1,3 +1,4 @@
+import { config } from "./config";
 import { HttpError } from "./session";
 import { PayPalError } from "./paypal";
 
@@ -10,7 +11,9 @@ export const json = (data: unknown, init?: number | ResponseInit) =>
 /** Set (or, with `null`, clear) a 30-day, HTTP-only, same-site cookie on a response. */
 export function setCookie(res: Response, name: string, value: string | null) {
   const attrs = value === null ? "Max-Age=0" : `Max-Age=${60 * 60 * 24 * 30}`;
-  res.headers.append("Set-Cookie", `${name}=${value === null ? "" : encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; ${attrs}`);
+  // Served over HTTPS (APP_URL https://…): the cookie is never sent over plain HTTP. Browsers still accept it on http://localhost.
+  const secure = config.appUrl.startsWith("https://") ? "; Secure" : "";
+  res.headers.append("Set-Cookie", `${name}=${value === null ? "" : encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; ${attrs}${secure}`);
   return res;
 }
 

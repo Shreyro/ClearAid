@@ -1,4 +1,13 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
+# The search service's password, shared by the API and the AI service (Render generates it once).
+envVarGroups:
+  - name: clearaid-ai-shared
+    envVars:
+      - key: RAG_TOKEN
+        generateValue: true
+      - key: COPILOT_MODEL # the API asks for it, the AI service downloads it. llama3.2:3b is faster on CPU, a little less accurate
+        value: llama3.1:8b
+
 services:
   # API: the backend Docker image
   - type: web
@@ -23,9 +32,39 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
-      # No Ollama on Render: AI features use their non-AI fallbacks.
+      - key: PAYPAL_PARTNER_CLIENT_ID
+        sync: false
+      - key: PAYPAL_PARTNER_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_PARTNER_MERCHANT_ID
+        sync: false
+      - key: PAYPAL_PARTNER_WEBHOOK_ID
+        sync: false
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_ENV
+        sync: false
+      - key: PLAID_REDIRECT_URI # https://<clearaid-web>/oauth/plaid
+        sync: false
+      - key: PLAID_WEBHOOK_URL # https://<clearaid-api>/api/plaid/webhook
+        sync: false
+      # The AI runs on clearaid-ai (below). The backend suspends it when idle and wakes it on the next question.
       - key: LOCAL_AI
-        value: "off"
+        value: "on"
+      - key: AI_HOST
+        fromService:
+          type: pserv
+          name: clearaid-ai
+          property: host
+      - key: AI_IDLE_MINUTES
+        value: "20"
+      - key: RENDER_API_KEY # Render dashboard > Account Settings > API Keys
+        sync: false
+      - key: RENDER_AI_SERVICE_ID # the srv-... id of clearaid-ai (in its URL)
+        sync: false
+      - fromGroup: clearaid-ai-shared
       - key: APP_URL # the clearaid-web URL (PayPal return URLs, links in outbound webhooks)
         sync: false
 
@@ -42,3 +81,23 @@ services:
         value: "22"
       - key: BACKEND_URL # the clearaid-api URL, e.g. https://clearaid-api.onrender.com (needed at build time)
         sync: false
+
+  # AI: Ollama (Llama chat + embeddings) and the FAISS/OCR search service in one private service.
+  # Big and billed by the hour, so the API suspends it after AI_IDLE_MINUTES without use.
+  - type: pserv
+    name: clearaid-ai
+    runtime: docker
+    rootDir: .
+    dockerfilePath: ./ai/Dockerfile
+    dockerContext: .
+    plan: pro max # 16 GB RAM; check the name and price in the Render dashboard
+    disk:
+      name: clearaid-ai-data
+      mountPath: /data
+      sizeGB: 20 # the models (about 6 GB) and the search index
+    envVars:
+      - key: EMBED_MODEL
+        value: nomic-embed-text
+      - key: OLLAMA_KEEP_ALIVE
+        value: 30m
+      - fromGroup: clearaid-ai-shared

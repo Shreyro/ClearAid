@@ -181,3 +181,8 @@ test("imported lines are stored, posted and de-duplicated without the personal d
   assert.equal(again.imp.duplicates, 4);
   assert.equal(db.bankTxns.length, 4);
 });
+
+test("bank wording for a PayPal withdrawal is not mistaken for a name", () => {
+  assert.equal(anon("PAYPAL TRANSFER PPD ID: PAYPALSD11").description, "PAYPAL TRANSFER PPD ID: PAYPALSD11");
+  assert.equal(anon("PAYPAL INST XFER WEB ID: PAYPALSI77").description, "PAYPAL INST XFER WEB ID: PAYPALSI77");
+});

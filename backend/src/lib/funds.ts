@@ -110,7 +110,6 @@ export function fundStats(db: DB, fund: Fund) {
   };
 }
 
-export type FundStats = ReturnType<typeof fundStats>;
 
 // ------------------------------------------------------------ Donations ----
 
@@ -272,61 +271,6 @@ export async function payWithdrawal(withdrawalId: string, actor: string) {
     publish({ kind: "withdrawal", fundId: fund.id, withdrawalId: w.id, status: "paid" });
     return w;
   });
-}
-
-// --------------------------------------------------------- Donor impact ----
-
-export function donorImpact(db: DB, donorId: string) {
-  const donor = db.donors.find((d) => d.id === donorId);
-  if (!donor) return null;
-  const donations = db.donations.filter((d) => d.donorId === donorId);
-  const items = donations.map((d) => {
-    const fund = findFund(db, d.fundId)!;
-    const spends = db.withdrawals
-      .filter((w) => w.status === "paid" && w.attribution?.some((a) => a.donationId === d.id))
-      .map((w) => {
-        const share = w.attribution!.find((a) => a.donationId === d.id)!.amount;
-        const vendor = db.vendors.find((v) => v.id === w.vendorId);
-        const need = fund.needs.find((n) => n.id === w.needId);
-        const units = w.quantity ? (w.quantity * share) / w.amount : null;
-        return {
-          withdrawalId: w.id,
-          category: w.category,
-          vendor: vendor?.name ?? "Vendor",
-          purpose: w.purposePublic,
-          share,
-          paidAt: w.paidAt,
-          units: units !== null ? Math.round(units * 10) / 10 : null,
-          unit: need?.unit ?? null,
-          item: need?.item ?? null,
-          riskScore: w.audit?.riskScore ?? null,
-        };
-      });
-    return {
-      donationId: d.id,
-      fund: { id: fund.id, slug: fund.slug, title: fund.title, status: fund.status, accent: fund.accent },
-      amount: d.amount,
-      source: d.source,
-      fromFund: d.fromFundId ? findFund(db, d.fromFundId)?.title : undefined,
-      createdAt: d.createdAt,
-      attributed: d.attributed,
-      refunded: d.refunded,
-      carriedOut: d.carriedOut,
-      leftover: donationAvailable(d),
-      election: d.election,
-      spends: spends.sort((a, b) => b.share - a.share),
-    };
-  });
-  return {
-    donor: { id: donor.id, name: donor.name, email: donor.email, publicLabel: donorLabel(donor) },
-    totals: {
-      given: donations.filter((d) => d.source === "paypal").reduce((a, d) => a + d.amount, 0),
-      deployed: donations.reduce((a, d) => a + d.attributed, 0),
-      refunded: donations.reduce((a, d) => a + d.refunded, 0),
-      unspent: donations.reduce((a, d) => a + donationAvailable(d), 0),
-    },
-    items,
-  };
 }
 
 // --------------------------------------------------------- Fund closure ----

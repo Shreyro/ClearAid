@@ -90,7 +90,8 @@ export function ngoMember(id?: string) {
   const found = findMember(getDb(), id);
   if (!found) return null;
   const { member: m, ngo } = found;
-  return { id: m.id, name: m.name, title: m.title, role: m.role, ngoId: ngo.id, ngoName: ngo.name };
+  // canPay: may send PayPal payments (admins always; staff when an admin allowed it).
+  return { id: m.id, name: m.name, title: m.title, role: m.role, ngoId: ngo.id, ngoName: ngo.name, canPay: m.role === "admin" || (m.role === "user" && Boolean(m.canPay)) };
 }
 export type SignedInMember = NonNullable<ReturnType<typeof ngoMember>>;
 

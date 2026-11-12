@@ -9,7 +9,8 @@ import { api, useJson, usd } from "./hooks";
 export type GiveInfo = {
   fund: { slug: string; title: string; region: string; description: string; accent: string; open: boolean; code?: string };
   ngo: { name: string; country: string };
-  paypal: { live: boolean; env: string; clientId: string | null };
+  /** merchantId: the fund pays an account connected by login (PayPal's buttons pay that merchant). */
+  paypal: { live: boolean; env: string; clientId: string | null; merchantId?: string | null };
   limits: { min: number; max: number };
   /** The NGO lets donors ask for their share of the leftover back when the fund closes. */
   returns?: boolean;
@@ -29,13 +30,13 @@ type PayPalSdk = {
 const PRESETS = [10, 25, 50, 100];
 
 /** Load PayPal's JS SDK once for this client ID. */
-function usePayPalSdk(clientId: string | null) {
+function usePayPalSdk(clientId: string | null, merchantId?: string | null) {
   const [sdk, setSdk] = useState<PayPalSdk | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!clientId) return;
     const w = window as unknown as { paypal?: PayPalSdk };
-    const src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=USD&intent=capture&components=buttons`;
+    const src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=USD&intent=capture&components=buttons${merchantId ? `&merchant-id=${encodeURIComponent(merchantId)}` : ""}`;
     let s = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
     const done = () => (w.paypal ? setSdk(w.paypal) : setError("PayPal didn't load"));
     if (s && w.paypal) {
@@ -55,7 +56,7 @@ function usePayPalSdk(clientId: string | null) {
       s?.removeEventListener("load", done);
       s?.removeEventListener("error", fail);
     };
-  }, [clientId]);
+  }, [clientId, merchantId]);
   return { sdk, error };
 }
 
@@ -77,7 +78,7 @@ export function DonateForm({ slug, info: given, preview, compact }: { slug: stri
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [thanks, setThanks] = useState<string | null>(null);
-  const { sdk, error: sdkError } = usePayPalSdk(!preview && data?.paypal.live ? data.paypal.clientId : null);
+  const { sdk, error: sdkError } = usePayPalSdk(!preview && data?.paypal.live ? data.paypal.clientId : null, data?.paypal.merchantId);
   const box = useRef<HTMLDivElement>(null);
   const form = useRef({ amount, name, email, showName, returnOptIn });
   useEffect(() => {

@@ -11,7 +11,10 @@ import {
   tagManually,
   txnView,
 } from "@/lib/banking";
+import { audit } from "@/lib/audit";
 import { getDb, mutate } from "@/lib/db";
+import { findPayPalAccount } from "@/lib/paypal-accounts";
+import { markTransfer } from "@/lib/transfers";
 import { handle, json } from "@/lib/http";
 import { fmt, toCents } from "@/lib/money";
 import { actorOf, HttpError, requireNgo, type SignedInMember } from "@/lib/session";
@@ -24,6 +27,7 @@ const FILTERS: Record<string, (t: BankTxn, db: DB, ngoId: string) => boolean> = 
   receipts: (t, db, ngoId) => missingReceipt(db, t, ngoId),
   fees: (t) => t.status === "fee_unallocated",
   tagged: (t) => t.status === "tagged" || t.status === "auto_tagged" || t.status === "matched",
+  transfers: (t) => t.status === "transfer",
   all: () => true,
 };
 
@@ -65,11 +69,15 @@ type Body =
   | { action: "tag"; id: string; allocations: { fundId: string; amountUsd: number; category?: string }[]; reason: string }
   | { action: "bulk_tag"; ids: string[]; fundId: string; category?: string; reason: string }
   | { action: "approve"; id: string }
-  | { action: "reject"; id: string; reason?: string };
+  | { action: "reject"; id: string; reason?: string }
+  /** Admins: this deposit is a PayPal account's balance reaching the bank (already counted), or it isn't. */
+  | { action: "mark_transfer"; id: string; paypalAccountId: string }
+  | { action: "not_transfer"; id: string };
 
 function checkMayTag(db: DB, t: BankTxn, me: SignedInMember, targets: string[]) {
   if (!canSeeTxn(t, me, db)) throw new HttpError(404, "Transaction not found");
   if (t.paymentId) throw new HttpError(409, "This line is the bank side of a declared payment, so it's already on that fund. Unlink it under Transactions → Declared payments first.");
+  if (t.status === "transfer") throw new HttpError(409, "This line is money moved in from one of your PayPal accounts, which ClearAid already counted when the gifts came in. Putting it on a fund would count it twice. If it isn't a transfer, press \"Not a transfer\" first.");
   for (const fid of [...targets, ...t.allocations.map((a) => a.fundId)]) {
     const f = db.funds.find((x) => x.id === fid && x.ngoId === me.ngoId);
     if (!f) throw new HttpError(400, "Unknown fund");
@@ -131,6 +139,28 @@ export const POST = handle(async (req: Request) => {
       const maker = { id: p.byId, name: p.byName };
       entries.push(...tagManually(db, t, p.allocations.map((a) => ({ fundId: a.fundId, amount: a.amount, category: a.category })), p.reason, maker, { by: actor }).entries);
       applied += 1;
+    } else if (b.action === "mark_transfer" || b.action === "not_transfer") {
+      if (me.role !== "admin") throw new HttpError(403, "Only an admin can mark transfers between your own accounts");
+      const t = find(b.id);
+      const account = db.bankAccounts.find((a) => a.id === t.accountId)!;
+      if (b.action === "mark_transfer") {
+        if (t.amount <= 0) throw new HttpError(400, "Only money coming in can be a transfer from PayPal");
+        if (t.status !== "untagged" && t.status !== "fee_unallocated") throw new HttpError(409, t.status === "transfer" ? "It's already marked as a transfer" : "This line is already on a fund. Untag it first, so nothing is counted twice.");
+        if (t.pending || t.paymentId) throw new HttpError(409, "This line has a change waiting or is a declared payment's bank side");
+        const pp = findPayPalAccount(db, me.ngoId, b.paypalAccountId);
+        if (!pp) throw new HttpError(400, "Choose one of your PayPal accounts");
+        markTransfer(db, t, pp.id, "manual", me.name);
+        audit(db, { actor, action: "bank.transfer_marked", targetId: t.id, summary: `Marked ${fmt(t.amount)} on ${account.name} (${t.date}) as a transfer from PayPal account "${pp.name}": money already counted, not put on a fund` });
+      } else {
+        if (t.status !== "transfer") throw new HttpError(400, "This line isn't marked as a transfer");
+        const was = t.transfer;
+        t.transfer = undefined;
+        t.notTransfer = true;
+        t.status = "untagged";
+        t.untaggedReason = "Not a transfer: tag it to a fund";
+        audit(db, { actor, action: "bank.transfer_unmarked", targetId: t.id, summary: `Said ${fmt(t.amount)} on ${account.name} (${t.date}) isn't a transfer${was ? ` from PayPal account ${findPayPalAccount(db, me.ngoId, was.paypalAccountId)?.name ?? was.paypalAccountId}` : ""}; it now waits in Untagged` });
+      }
+      applied += 1;
     } else if (b.action === "reject") {
       const t = find(b.id);
       const p = t.pending;
@@ -143,7 +173,9 @@ export const POST = handle(async (req: Request) => {
   announce(res.entries);
   const moved = res.entries.reduce((s, e) => s + e.amount, 0);
   const parts: string[] = [];
-  if (b.action === "approve") parts.push("Approved");
+  if (b.action === "mark_transfer") parts.push("Marked as a transfer from PayPal: it stays off every fund, so nothing is counted twice");
+  else if (b.action === "not_transfer") parts.push("Not a transfer: it's in Untagged, ready to be tagged to a fund");
+  else if (b.action === "approve") parts.push("Approved");
   else if (b.action === "reject") parts.push("Change turned down; the line is unchanged");
   else {
     if (res.applied) parts.push(`${res.applied === 1 ? "Transaction" : `${res.applied} transactions`} updated`);
