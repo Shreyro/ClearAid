@@ -59,7 +59,7 @@ services:
           name: clearaid-ai
           property: host
       - key: AI_IDLE_MINUTES
-        value: "20"
+        value: "10"
       - key: RENDER_API_KEY # Render dashboard > Account Settings > API Keys
         sync: false
       - key: RENDER_AI_SERVICE_ID # the srv-... id of clearaid-ai (in its URL)

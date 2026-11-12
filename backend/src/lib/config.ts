@@ -64,7 +64,7 @@ export const config = {
   render: {
     apiKey: process.env.RENDER_API_KEY?.trim() || "",
     aiServiceId: process.env.RENDER_AI_SERVICE_ID?.trim() || "",
-    idleMinutes: Math.max(2, Number(process.env.AI_IDLE_MINUTES) || 20),
+    idleMinutes: Math.max(2, Number(process.env.AI_IDLE_MINUTES) || 10),
   },
 };
 

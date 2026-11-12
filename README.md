@@ -202,7 +202,7 @@ The first start downloads about 5 GB of models. The app works straight away; the
 
 **Production-like on one machine:** `node scripts/prod-local.mjs` creates `.env` with fixed random secrets, uses the host's Ollama if one is running, starts a Cloudflare quick tunnel, and writes its HTTPS address into `PUBLIC_URL`, `PLAID_REDIRECT_URI` and `PLAID_WEBHOOK_URL`. It then builds and starts the stack and waits until it's healthy. A quick tunnel gets a new address on every start, so run the script again after a restart and update the URLs it prints in the Plaid and PayPal dashboards. `node scripts/prod-local.mjs --down` stops it.
 
-**Render:** `render.yaml` deploys `clearaid-api`, `clearaid-web` and a private `clearaid-ai` (Ollama + the search/OCR service, 16 GB, model disk). The API suspends the AI service after `AI_IDLE_MINUTES` (default 20) without AI use and resumes it on the next question (needs `RENDER_API_KEY` and `RENDER_AI_SERVICE_ID`). The first answer after a sleep takes 1–2 minutes.
+**Render:** `render.yaml` deploys `clearaid-api`, `clearaid-web` and a private `clearaid-ai` (Ollama + the search/OCR service, 16 GB, model disk). The API suspends the AI service after `AI_IDLE_MINUTES` (default 10) without AI use and resumes it on the next question (needs `RENDER_API_KEY` and `RENDER_AI_SERVICE_ID`). The first answer after a sleep takes 1–2 minutes.
 
 For production, set a long random `SESSION_SECRET` and `RAG_TOKEN` (`openssl rand -hex 32`), set `PUBLIC_URL` to the address people use, and serve over HTTPS. Back up the `clearaid-data` volume; the other two can be rebuilt. `docker compose down` stops everything and keeps the data (`-v` deletes it).
 
