@@ -16,12 +16,14 @@ It's an internal tool: only NGO staff (and read-only donor logins an admin creat
 - [Features](#features)
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
+- [Setting up the .env files](#setting-up-the-env-files)
 - [Configuration](#configuration)
 - [Run it in Docker](#run-it-in-docker)
 - [How the PayPal integration works](#how-the-paypal-integration-works)
 - [Connecting banks with Plaid](#connecting-banks-with-plaid)
 - [How the AI works](#how-the-ai-works)
 - [How embedding works](#how-embedding-works)
+- [AG Grid, Postman and Render](#ag-grid-postman-and-render)
 - [Testing](#testing)
 - [Project layout](#project-layout)
 - [Troubleshooting](#troubleshooting)
@@ -150,6 +152,55 @@ python -m http.server 5500 --directory demo-site
 
 To record a demo, follow [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
+## Setting up the .env files
+
+ClearAid reads settings from environment files. **Never commit them**: `.env` is in `.gitignore`, and it holds your PayPal and Plaid secrets.
+
+| File | Used by | Template |
+|---|---|---|
+| `backend/.env` | The API when you run it with `npm run dev` | `backend/.env.example` |
+| `.env` (project root) | `docker compose` (ports, models, secrets shared by the containers) | `.env.example` |
+| `.env.sandbox-accounts` (project root) | Only the `npm run sandbox:data` script | create it by hand (see below) |
+
+**1. Create the file from its template.**
+
+```bash
+# macOS / Linux / Git Bash
+cp backend/.env.example backend/.env
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item backend\.env.example backend\.env
+```
+
+For Docker, copy the root `.env.example` to `.env` the same way. Lines starting with `#` are comments; remove the `#` to turn an optional setting on. Restart the backend after any change.
+
+**2. Run with nothing filled in (demo mode).** Leave every key blank and the app still works with simulated PayPal and banks. Only fill in what you want to make real.
+
+**3. PayPal sandbox** (optional).
+1. Sign in at https://developer.paypal.com/dashboard, switch to **Sandbox**, and open **Apps & Credentials**.
+2. Open (or create) a REST app and copy its **Client ID** and **Secret** into `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. Keep `PAYPAL_ENV=sandbox`.
+3. For webhooks, open the same app, scroll to **Sandbox Webhooks → Add Webhook**, enter `<your public address>/api/paypal/webhook` and subscribe to the events (or **All Events**). PayPal then shows a **Webhook ID**: put it in `PAYPAL_WEBHOOK_ID`. Without it, webhook signatures can't be checked. PayPal cannot reach `localhost`, so use a tunnel (for example Cloudflare or ngrok) when testing locally.
+
+**4. Plaid sandbox** (optional).
+1. At https://dashboard.plaid.com/developers/keys copy the **Client ID** and the **Sandbox secret** into `PLAID_CLIENT_ID` and `PLAID_SECRET`. Keep `PLAID_ENV=sandbox`.
+2. In the sandbox, sign in to any bank with `user_good` / `pass_good`.
+3. For banks that log in on their own website, set `PLAID_REDIRECT_URI` to `<your public address>/oauth/plaid` **and** add exactly the same URL under **Developers → API → Allowed redirect URIs** in the Plaid dashboard (Plaid asks you to verify your identity before it saves). If you skip the dashboard step, "Connect with Plaid" fails with *OAuth redirect URI must be configured in the developer dashboard*.
+
+**5. Secrets and URLs.**
+- `SESSION_SECRET`: a long random value, for example `openssl rand -hex 32`. It signs sign-in cookies and encrypts the stored PayPal and bank keys, so **keep it fixed**: changing it signs everyone out and makes saved keys unreadable. If empty, one is generated and stored in the data folder.
+- `APP_URL` (backend) and `PUBLIC_URL` (Docker): the address people use to reach the web UI, `http://localhost:3000` by default. PayPal return links use it.
+- `RAG_TOKEN`: any shared secret, set to the same value for the API and `rag/server.py`.
+
+**6. Local AI** (optional). The defaults work once Ollama is installed and the models are pulled (see [Quick start](#quick-start)). `LOCAL_AI=off` switches to the non-AI fallbacks.
+
+**7. Deploying on Render.** `render.yaml` marks the PayPal and Plaid keys, `PAYPAL_WEBHOOK_ID` and `PLAID_REDIRECT_URI` as `sync: false`, so they are **not** copied from git. Enter them under the service's **Environment** tab in the Render dashboard. Set `RENDER_MODE=YES` to switch the AI features off on the hosted copy. Use the web service's address (for example `https://<your-web>.onrender.com/oauth/plaid`) for the Plaid redirect URI.
+
+**8. Optional: `.env.sandbox-accounts`** (root). Only `npm run sandbox:data` reads it. It holds the US sandbox business account's keys as `NGO_CLIENT_ID`, `NGO_CLIENT_SECRET` and `NGO_MERCHANT_EMAIL`. Do not commit it.
+
+**Check it worked.** Open **Sources**: a PayPal account card shows your client ID's first characters, and "Connect with Plaid" opens the Plaid window without an error.
+
 ## Configuration
 
 Backend settings go in `backend/.env` (template: `backend/.env.example`). Docker settings go in `.env` at the root (template: `.env.example`). The full list is in [LLD §9](docs/LLD.md#9-configuration).
@@ -276,6 +327,22 @@ An admin builds an embed under **Settings → Public embeds**: one fund, several
 - `/embed/KEY` needs no sign-in, uses no cookies, and calls one endpoint, `GET /api/embed/KEY`, which returns only the blocks switched on (CORS is open; the data is public). Paused, deleted and unknown keys all return the same 404. The same JSON is available to sites that want to draw their own.
 - Amounts are totals from the ledger, and dates are to the day. Donors, bank references, account names, staff names, approvals, receipts and the audit log are never part of the response. Tracking codes appear only with the donate form, and a bank payment's own wording only if the admin chose "Name every payee". `backend/src/lib/embed.test.ts` checks this against the whole demo data set.
 - Every embed change is audit-logged, and an embed can be paused (same link, shows a notice) or deleted at once.
+
+## AG Grid, Postman and Render
+
+**AG Grid and AG Charts (the data views).** Every table in the web UI is an [AG Grid](https://www.ag-grid.com/) grid, and the charts are [AG Charts](https://www.ag-grid.com/charts/). `frontend/src/components/DataGrid.tsx` wraps AG Grid for the card-sized tables (funds, sources, payees), and `LedgerGrid.tsx` sets the shared theme and shows the ledger and audit log. The Transactions and Audit log pages use them directly, so sorting, column sizing and copying cells work the same everywhere. `Charts.tsx` draws the charts, such as *Money in vs money out*. The money-flow Sankey diagram is ClearAid's own component, not AG Charts.
+
+**Postman (API testing).** `docs/postman/ClearAid.postman_collection.json` holds 392 requests in 13 folders that cover every backend route, with 1,595 assertions: status codes, access rules, hash-chain re-computation, anonymisation, maker-checker, PayPal accounts and public embeds. Newman runs it from the command line, and the last run (all passed) is saved as `docs/postman/report.html`. To use it in the Postman app, import the collection, set the `baseUrl` variable, and point Postman's working directory at `docs/postman/` so the upload requests find the sample receipts. Full steps are in [`docs/postman/README.md`](docs/postman/README.md).
+
+**Render (hosting).** The deployed copy runs on [Render](https://render.com/), defined by `render.yaml`:
+
+| Service | Link | What it is |
+|---|---|---|
+| Web UI | https://clearaid-web.onrender.com | The Next.js app (`frontend/`) |
+| API | https://clearaid-api.onrender.com | The Hono backend (`backend/`), health check at `/healthz` |
+
+The API runs from the Docker image in `backend/` with a persistent disk (`clearaid-data`, mounted at `/data`) that holds the JSON data store. It deploys on every push to `main`, and the PayPal and Plaid keys are entered in the Render dashboard (see [Setting up the .env files](#setting-up-the-env-files)).
+> **The AI features are switched off on Render** (`RENDER_MODE=YES`). The Copilot, receipt and photo reading, and the AI audits and drafting need a local Ollama model and the `rag` service, which the hosted copy doesn't run. The rest of the app works normally. To use the AI features, run ClearAid on your own machine (see [Quick start](#quick-start)).
 
 ## Testing
 
