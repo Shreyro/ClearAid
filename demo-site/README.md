@@ -23,16 +23,16 @@ A small static website for the fictional **Coastal Relief Collective**, showing 
 
 ## How it finds ClearAid
 
-`clearaid.js` decides where ClearAid is: on `localhost` it uses your local ClearAid (port 3000); anywhere else it uses the hosted one (`HOSTED` at the top of that file, `https://clearaid-web.onrender.com`). Change `HOSTED` if your hosted ClearAid has another address.
+`clearaid.js` decides where ClearAid is: on `localhost` it uses your local ClearAid (port 3000). If you ever serve this folder from another address, it falls back to the `HOSTED` address at the top of that file; change it to point at your own ClearAid.
 
 ## The embeds
 
-The three embeds use fixed demo keys (`demo-all-funds`, `demo-cyclone-asha`, `demo-floods`). ClearAid creates them by itself when it starts, in a fresh local copy and on the hosted demo, so nothing has to be pasted and a data reset brings them back. To stop that, set `DEMO_EMBEDS=off` on the backend.
+The three embeds use fixed demo keys (`demo-all-funds`, `demo-cyclone-asha`, `demo-floods`). ClearAid creates them by itself when it starts, in a fresh local copy, so nothing has to be pasted and a data reset brings them back. To stop that, set `DEMO_EMBEDS=off` on the backend.
 
 A real NGO website instead pastes the code ClearAid gives under **Settings, Public embeds, Get code**: an `<iframe>` plus the optional `embed.js`. Nothing else from ClearAid is used.
 
 Change something in ClearAid (record a payment, tag a bank line, switch an embed's colours or funds) and the page updates by itself within a minute, with no change to this site.
 
-## Hosting it
+## Where to test it
 
-`render.yaml` deploys this folder as the static site `clearaid-demo` on Render (no build step).
+Test the demo site **locally** (see [Run it](#run-it)). It is not deployed on Render.

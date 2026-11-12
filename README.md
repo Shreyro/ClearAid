@@ -144,7 +144,7 @@ Without Ollama or the rag service the rest of the app still works; the Copilot p
 
 **5. Optional: real PayPal and Plaid sandboxes.** Copy `backend/.env.example` to `backend/.env`, add the keys (see [Configuration](#configuration)), and restart the backend.
 
-**6. Optional: the demo NGO website** that shows embeds on a separate site (port 5500). See [`demo-site/README.md`](demo-site/README.md).
+**6. Optional: the demo NGO website** that shows embeds on a separate site (port 5500). Test it locally with the command below; it is not deployed on Render. See [`demo-site/README.md`](demo-site/README.md).
 
 ```bash
 python -m http.server 5500 --directory demo-site

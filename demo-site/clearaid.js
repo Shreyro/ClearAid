@@ -2,8 +2,8 @@
  * Where this demo site finds ClearAid.
  *
  * On your own computer (localhost) it uses the ClearAid you started on port 3000.
- * Anywhere else (the hosted demo) it uses the hosted ClearAid below.
- * Change HOSTED if your hosted ClearAid has another address.
+ * Anywhere else it falls back to the ClearAid address below.
+ * Change HOSTED if you serve this site from another address.
  *
  * The three embeds use fixed demo keys that ClearAid creates by itself in its demo
  * data, so nothing has to be pasted here. A real NGO website just pastes the

@@ -60,12 +60,3 @@ services:
         value: "22"
       - key: BACKEND_URL # the clearaid-api URL, e.g. https://clearaid-api.onrender.com (needed at build time)
         sync: false
-
-  # Demo NGO website: plain HTML that shows ClearAid's public embeds the way a real NGO's site would.
-  # It finds ClearAid through demo-site/clearaid.js (hosted address there; localhost when run locally).
-  - type: web
-    name: clearaid-demo
-    runtime: static
-    rootDir: demo-site
-    buildCommand: echo "static site, nothing to build"
-    staticPublishPath: .
