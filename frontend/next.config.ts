@@ -15,8 +15,8 @@ const nextConfig: NextConfig = {
     return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];
   },
   // Copilot answers from a CPU-hosted Llama can take a minute or more; the proxy's default 30 s cut-off
-  // would end them with an empty 500, so allow up to 5 minutes.
-  experimental: { proxyTimeout: 300_000 },
+  // would end them with an empty 500, so allow up to 7 minutes.
+  experimental: { proxyTimeout: 420_000 },
   turbopack: {
     rules: {
       "*.css": {
