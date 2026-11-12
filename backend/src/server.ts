@@ -35,6 +35,7 @@ import * as ngoAssignments from "./routes/ngo/assignments/route";
 import * as ngoMembers from "./routes/ngo/members/route";
 import * as copilot from "./routes/copilot/route";
 import * as copilotChats from "./routes/copilot/chats/route";
+import * as copilotJob from "./routes/copilot/jobs/[id]/route";
 import * as copilotChat from "./routes/copilot/chats/[id]/route";
 import * as embeds from "./routes/embeds/route";
 import * as embedPreview from "./routes/embeds/preview/route";
@@ -77,6 +78,7 @@ const routes: [string, unknown][] = [
   ["/api/bank/transactions/:id/receipts", bankReceipts],
   ["/api/copilot", copilot],
   ["/api/copilot/chats", copilotChats],
+  ["/api/copilot/jobs/:id", copilotJob],
   ["/api/copilot/chats/:id", copilotChat],
   ["/api/embed/:key", publicEmbed],
   ["/api/embeds", embeds],
@@ -142,6 +144,7 @@ const DONOR_ROUTES = new Set([
   "GET /api/copilot/chats",
   "POST /api/copilot/chats",
   "GET /api/copilot/chats/:id",
+  "GET /api/copilot/jobs/:id",
 ]);
 
 export const app = new Hono();

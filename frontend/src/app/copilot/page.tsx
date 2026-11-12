@@ -67,7 +67,16 @@ export default function CopilotPage() {
     setInput("");
     setMsgs((m) => [...m, { role: "user", text: q }]);
     try {
-      const r = await api<Reply>("/api/copilot", { json: { message: q, fundId: fundId || undefined, chatId: chatId ?? undefined } });
+      // Start the question, then check for the answer every 2 s: no request stays open while the model thinks.
+      const { jobId } = await api<{ jobId: string }>("/api/copilot", { json: { message: q, fundId: fundId || undefined, chatId: chatId ?? undefined, async: true } });
+      let r: Reply | null = null;
+      for (let waited = 0; !r; waited += 2) {
+        if (waited > 600) throw new Error("This is taking too long. Try again in a moment.");
+        await new Promise((res) => setTimeout(res, 2000));
+        const j = await api<{ status: "working" | "done" | "error"; result?: Reply; error?: string }>(`/api/copilot/jobs/${jobId}`);
+        if (j.status === "error") throw new Error(j.error);
+        if (j.status === "done") r = j.result!;
+      }
       setMsgs((m) => [...m, { role: "assistant", text: r.reply, reply: r }]);
       if (r.chatId) setChatId(r.chatId);
       void reloadChats();

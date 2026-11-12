@@ -982,6 +982,41 @@
           ]
         },
         {
+          "name": "Signed out: GET /api/copilot/jobs/:id is refused",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/jobs/job_x",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "jobs",
+                "job_x"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Signed out: POST /api/copilot/chats is refused",
           "description": "[chats]",
           "request": {
@@ -8986,6 +9021,253 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask in the background: empty question",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \" \",\n  \"async\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask in the background: chat doesn't exist",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"and last month?\",\n  \"chatId\": \"chat_nope\",\n  \"async\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error has a message\", () => pm.expect(body.error).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask in the background (model not running)",
+          "description": "[chats]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"How much is left in Cyclone Asha?\",\n  \"async\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"returns a job to check\", () => { pm.expect(body.jobId).to.be.a(\"string\").and.match(/^job_/); });",
+                  "try { pm.collectionVariables.set(\"copilotJob\", body.jobId); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check the background question",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/jobs/{{copilotJob}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "jobs",
+                "{{copilotJob}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"it is working or has failed because the model is down\", () => { pm.expect([\"working\", \"error\"]).to.include(body.status); if (body.status === \"error\") pm.expect(body.error).to.match(/Ollama/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A background question that can't be answered reports why",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/jobs/{{copilotJob}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "jobs",
+                "{{copilotJob}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "let body = null; try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",
+                  "pm.test(\"error with a message\", () => { pm.expect(body.status).to.equal(\"error\"); pm.expect(body.code).to.equal(503); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check a question that doesn't exist",
+          "description": "[chats]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/jobs/job_nope",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "copilot",
+                "jobs",
+                "job_nope"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
                   "pm.test(\"responds within 3 s\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
                   "let body = null; try { body = pm.response.json(); } catch (e) {}",
                   "pm.test(\"body is JSON\", () => pm.expect(body).to.be.an(\"object\"));",

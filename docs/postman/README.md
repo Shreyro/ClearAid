@@ -1,6 +1,6 @@
 # ClearAid API tests (Postman)
 
-- `ClearAid.postman_collection.json`: 385 requests in 13 folders covering every backend route, with 1,567 assertions (status codes, access rules, hash-chain re-computation, anonymisation, maker-checker, recorded payments, PayPal accounts, public embeds, leftover returns to donors).
+- `ClearAid.postman_collection.json`: 392 requests in 13 folders covering every backend route, with 1,595 assertions (status codes, access rules, hash-chain re-computation, anonymisation, maker-checker, recorded payments, PayPal accounts, public embeds, leftover returns to donors).
 - `report.html`: the result of the last run (all passed). Open it in a browser.
 - `sample-receipt.png`, `sample-invoice.png`, `sample-manual-receipt.png`, `sample-invoice.pdf`, `sample-late-invoice.png`: the files the upload requests attach.
 
