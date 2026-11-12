@@ -237,7 +237,7 @@ export default function CopilotPage() {
           {status?.power === "asleep" && (
             <div className="card p-4 text-xs">
               <div className="font-semibold">The AI is asleep</div>
-              <p className="mt-1 text-ink-2">It switches off when nobody has used it for a while, to save cost. Ask a question and it wakes up; the first answer takes 1–2 minutes.</p>
+              <p className="mt-1 text-ink-2">It switches off when nobody has used it for a while, to save cost. Ask a question and it wakes up; the first answer takes 1â€“2 minutes.</p>
             </div>
           )}
           {waking && (

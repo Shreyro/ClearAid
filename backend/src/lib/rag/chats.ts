@@ -19,7 +19,7 @@ export const getChat = (userId: string, id: string) => chatsOf(getDb()).find((c)
 
 const titleOf = (q: string) => {
   const t = q.replace(/\s+/g, " ").trim();
-  return t.length > 48 ? `${t.slice(0, 47).trimEnd()}…` : t;
+  return t.length > 48 ? `${t.slice(0, 47).trimEnd()}â€¦` : t;
 };
 
 /** Add a question and its answer to a conversation (starting one if needed); returns its id. */

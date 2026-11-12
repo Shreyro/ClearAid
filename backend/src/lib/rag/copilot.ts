@@ -157,7 +157,7 @@ export async function askCopilot(args: { session: Session; question: string; fun
     const woke = await wakeAi();
     let ready = !woke;
     if (ready) await ragHealth().catch(() => (ready = false));
-    if (!ready) throw new HttpError(503, "The AI was asleep to save cost and is waking up now. This takes 1–2 minutes: ask again shortly.");
+    if (!ready) throw new HttpError(503, "The AI was asleep to save cost and is waking up now. This takes 1â€“2 minutes: ask again shortly.");
   }
 
   if (!scope.funds.length && !scope.includeUntraced) {
