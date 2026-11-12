@@ -24,6 +24,8 @@ export const untracedIndex = (ngoId: string) => `ngo:${ngoId}:untraced`;
 
 const day = (iso: string) => iso.slice(0, 10);
 const money = (cents: number) => fmt(Math.abs(cents));
+/** Like money, but a minus sign when below zero (a fund that spent more than it holds). */
+const signed = (cents: number) => `${cents < 0 ? "-" : ""}${money(cents)}`;
 
 function fundProfile(db: DB, f: Fund): Doc {
   const ngo = db.ngos.find((n) => n.id === f.ngoId);
@@ -155,6 +157,48 @@ export function buildIndexes(db: DB): Record<string, Doc[]> {
  */
 const pct = (part: number, whole: number) => `${((part / whole) * 100).toFixed(1)}%`;
 
+/** Money in and spent per calendar month (UTC) from the fund's ledger, same rules as fundStats. */
+function monthly(db: DB, f: Fund) {
+  const m = new Map<string, { in: number; out: number }>();
+  for (const l of db.ledger.filter((x) => x.fundId === f.id)) {
+    const inn = l.type === "donation" || l.type === "carry_forward_in" ? Math.abs(l.amount) : l.type === "bank_in" ? l.amount : 0;
+    const out = l.type === "withdrawal" ? Math.abs(l.amount) : l.type === "bank_out" || l.type === "expense" ? -l.amount : 0;
+    if (!inn && !out) continue;
+    const k = l.ts.slice(0, 7);
+    const e = m.get(k) ?? { in: 0, out: 0 };
+    e.in += inn;
+    e.out += out;
+    m.set(k, e);
+  }
+  return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+/** Who is ahead of whom across funds, worked out here so the model never compares or ranks numbers itself. */
+export function fundRankings(db: DB, funds: Fund[]) {
+  if (funds.length < 2) return "";
+  const rows = funds.map((f) => ({ f, s: fundStats(db, f) }));
+  const list = (key: (r: (typeof rows)[number]) => number, text: (r: (typeof rows)[number]) => string) =>
+    [...rows].sort((a, b) => key(b) - key(a)).map((r, i) => `${i + 1}. ${r.f.title} ${text(r)}`).join("; ");
+  return [
+    `RANKED, highest first. MONEY RAISED: ${list((r) => r.s.raised, (r) => money(r.s.raised))}`,
+    `MONEY SPENT: ${list((r) => r.s.spent, (r) => money(r.s.spent))}`,
+    `BALANCE STILL HELD: ${list((r) => r.s.balance, (r) => signed(r.s.balance))}`,
+    `PROGRESS TO GOAL (raised): ${list((r) => (r.f.goal > 0 ? r.s.raised / r.f.goal : 0), (r) => (r.f.goal > 0 ? pct(r.s.raised, r.f.goal) : "no goal"))}`,
+    `NUMBER OF DONORS: ${list((r) => r.s.donors, (r) => String(r.s.donors))}`,
+  ].join("\n");
+}
+
+/** Counts and totals of bank lines that aren't on a fund yet. */
+export function untracedSummary(db: DB, ngoId: string) {
+  const accounts = new Set(db.bankAccounts.filter((a) => a.ngoId === ngoId).map((a) => a.id));
+  const lines = db.bankTxns.filter((t) => accounts.has(t.accountId) && (t.status === "untagged" || t.status === "fee_unallocated"));
+  const total = (xs: typeof lines) => money(xs.reduce((a, t) => a + Math.abs(t.amount), 0));
+  const fees = lines.filter((t) => t.isFee);
+  const rec = lines.filter((t) => !t.isFee && t.amount >= 0);
+  const pay = lines.filter((t) => !t.isFee && t.amount < 0);
+  return `BANK LINES NOT ON ANY FUND: ${lines.length} in all. Receipts: ${rec.length} totalling ${total(rec)}. Payments: ${pay.length} totalling ${total(pay)}. Bank fees: ${fees.length} totalling ${total(fees)}.`;
+}
+
 export function fundSummary(db: DB, f: Fund, audience: Audience) {
   const s = fundStats(db, f);
   const flow = buildFlow(db, [f], { ngoId: f.ngoId, includeUntraced: false, payeeLimit: 12 });
@@ -170,6 +214,11 @@ export function fundSummary(db: DB, f: Fund, audience: Audience) {
     .sort((a, b) => b.value - a.value)
     .map((l) => `${label.get(l.source) ?? l.source} ${money(l.value)}`)
     .join("; ");
+  const byCategoryTop = flow.category.links
+    .filter((l) => l.source === `fund:${f.id}` && l.target !== "dst:balance")
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 1)
+    .map((l) => `${label.get(l.target) ?? l.target} ${money(l.value)}`)[0];
   const party = (p: { name: string; total: number; count: number; via: string }) => `  - ${p.name}: ${money(p.total)} in ${p.count} payment${p.count === 1 ? "" : "s"} (${p.via})`;
   const waiting = (db.payments ?? []).filter((p) => p.fundId === f.id && p.status === "awaiting_bank").length;
   // Plain labelled lines: a small local model copies figures reliably but adds them up badly.
@@ -179,11 +228,22 @@ export function fundSummary(db: DB, f: Fund, audience: Audience) {
     `TOTAL MONEY OUT (spent): ${money(s.spent)}${byCategory ? ` (by category: ${byCategory})` : ""}`,
     `REFUNDED TO DONORS: ${money(s.refunded)}`,
     `CARRIED TO OTHER FUNDS: ${money(s.carriedOut)}`,
-    `BALANCE STILL HELD: ${money(s.balance)} (goal ${money(f.goal)})`,
+    `BALANCE STILL HELD: ${signed(s.balance)}${s.balance < 0 ? " (overspent: the fund has spent more than it received)" : ""} (goal ${money(f.goal)})`,
     // Worked out here so the model copies the percentages instead of dividing.
-    f.goal > 0 ? `PROGRESS TO GOAL: raised ${money(s.raised)} of the ${money(f.goal)} goal (${pct(s.raised, f.goal)}); the balance still held, ${money(s.balance)}, is ${pct(s.balance, f.goal)} of the goal` : "",
+    f.goal > 0 ? `PROGRESS TO GOAL: raised ${money(s.raised)} of the ${money(f.goal)} goal (${pct(s.raised, f.goal)}); the balance still held, ${signed(s.balance)}, is ${pct(s.balance, f.goal)} of the goal` : "",
     `LIFECYCLE: ${f.status === "closing" ? `CLOSING: the fund is winding down${f.closingStartedAt ? ` (started ${f.closingStartedAt.slice(0, 10)})` : ""}` : f.status === "closed" ? "CLOSED" : "ACTIVE: still open and receiving or spending money"}`,
     `NUMBER OF DONORS: ${s.donors}`,
+    ...(() => {
+      const months = monthly(db, f).slice(-6);
+      if (!months.length) return [];
+      const now = new Date();
+      const cur = now.toISOString().slice(0, 7);
+      const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+      const at = (k: string) => months.find(([m]) => m === k)?.[1];
+      const one = (label: string, k: string) => `${label} (${k}): ${at(k) ? `money in ${money(at(k)!.in)}, spent ${money(at(k)!.out)}` : "no money came in or went out"}`;
+      return [`BY MONTH: ${months.map(([k, v]) => `${k} in ${money(v.in)}, spent ${money(v.out)}`).join("; ")}`, one("THIS MONTH", cur), one("LAST MONTH", prev)];
+    })(),
+    byCategoryTop ? `BIGGEST SPENDING CATEGORY: ${byCategoryTop}` : "",
     flow.sources.length ? `LARGEST SOURCES OF MONEY IN:\n${flow.sources.slice(0, 8).map(party).join("\n")}` : "",
     flow.payees.length ? `LARGEST PAYEES (MONEY OUT):\n${flow.payees.slice(0, 10).map(party).join("\n")}` : "",
     audience === "staff" && waiting ? `DECLARED PAYMENTS STILL WAITING FOR THEIR BANK LINE: ${waiting}` : "",
