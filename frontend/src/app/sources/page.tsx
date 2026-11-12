@@ -106,9 +106,7 @@ export default function SourcesPage() {
       )}
       {data?.plaid.live && (
         <p className="text-xs text-muted mb-4">
-          Plaid ({data.plaid.env ?? "sandbox"}): new transactions arrive {data.plaid.webhooks ? "as soon as Plaid has them" : "when someone syncs"}{data.plaid.autoSyncMinutes ? `, and every connected bank is checked every ${data.plaid.autoSyncMinutes} min` : ""}.
-          {isAdmin && !data.plaid.oauth && " Banks that log in on their own website (e.g. Chase) need PLAID_REDIRECT_URI set on the backend."}
-        </p>
+          Plaid ({data.plaid.env ?? "sandbox"}): new transactions arrive {data.plaid.webhooks ? "as soon as Plaid has them" : "when someone syncs"}{data.plaid.autoSyncMinutes ? `, and every connected bank is checked every ${data.plaid.autoSyncMinutes} min` : ""}.        </p>
       )}
       {data && !data.plaid.live && isAdmin && (
         <p className="text-xs text-muted mb-4">Plaid isn&apos;t configured (set <span className="font-mono">PLAID_CLIENT_ID</span> and <span className="font-mono">PLAID_SECRET</span> on the backend for sandbox). Until then, &ldquo;Connect bank&rdquo; adds a simulated feed.</p>
@@ -287,7 +285,7 @@ function AccountCard({ a, isAdmin, busy, run }: { a: Account; isAdmin: boolean; 
         {a.transfersFrom.length ? (
           <span>Receives withdrawals from {a.transfersFrom.map((p) => p.name).join(", ")}: {a.counts.transfers} transfer{a.counts.transfers === 1 ? "" : "s"} so far, never counted as new money{a.counts.transfers ? <> (<Link className="underline" href={`/untagged?status=transfers&account=${a.id}`}>see them</Link>)</> : null}.</span>
         ) : (
-          <span>Not linked to a PayPal account{a.counts.transfers ? ` (${a.counts.transfers} line${a.counts.transfers === 1 ? "" : "s"} marked as transfers by hand)` : ""}.</span>
+          a.counts.transfers ? <span>{a.counts.transfers} line{a.counts.transfers === 1 ? "" : "s"} marked as transfers by hand.</span> : null
         )}
       </p>
       {linking && <PayPalLink a={a} onDone={(m) => { setLinking(false); void run(`link:${a.id}`, async () => m); }} />}

@@ -160,7 +160,7 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
             <span className="text-ink-2">Still in PayPal <b className={clsx("tnum", a.reconciliation.stillInPayPal < 0 ? "text-critical" : "text-ink")}>{usd(a.reconciliation.stillInPayPal)}</b></span>
           </div>
           <div className="text-muted">
-            {a.reconciliation.banks.length ? <>Withdraws to {a.reconciliation.banks.map((b) => b.name).join(", ")}.</> : <>Not linked to a bank account yet: link it on the bank account&apos;s card below (PayPal link).</>} &ldquo;Still in PayPal&rdquo; is before PayPal&apos;s own fees.
+            {a.reconciliation.banks.length ? <>Withdraws to {a.reconciliation.banks.map((b) => b.name).join(", ")}.</> : null} &ldquo;Still in PayPal&rdquo; is before PayPal&apos;s own fees.
           </div>
           {a.reconciliation.warning && <div className="text-critical">{a.reconciliation.warning}</div>}
         </div>
@@ -171,13 +171,13 @@ function AccountCard({ a, isAdmin, onDone, onError }: { a: PayPalAccount; isAdmi
         {a.funds.length ? (
           <div className="flex flex-wrap gap-1.5">{a.funds.map((f) => <Link key={f.id} href={`/funds/${f.slug}`} className="rounded-full border border-line px-2.5 py-0.5 text-xs hover:bg-hover">{f.title}</Link>)}</div>
         ) : (
-          <p className="text-xs text-muted">{active ? "No fund uses this account yet." : "None while disconnected."}</p>
+          !active && <p className="text-xs text-muted">None while disconnected.</p>
         )}
       </div>
 
       {a.mode === "live" && (
         <div className="text-xs text-ink-2">
-          <span className="font-semibold text-ink">Webhooks:</span> {a.webhooks ? "signature checked with this account's webhook ID." : "not set up, so refunds and disputes made inside PayPal won't show here."} In the PayPal app, send events to{" "}
+          <span className="font-semibold text-ink">Webhooks:</span> {a.webhooks ? "signature checked with this account's webhook ID." : "events from PayPal are accepted at this address."} In the PayPal app, send events to{" "}
           <button
             className="font-mono underline decoration-dotted inline-flex items-center gap-1 break-all text-left"
             onClick={() => { void navigator.clipboard?.writeText(a.webhookUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
