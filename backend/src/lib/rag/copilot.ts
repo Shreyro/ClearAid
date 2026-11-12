@@ -107,7 +107,7 @@ async function ollamaChat(messages: { role: "system" | "user" | "assistant"; con
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: L.model, messages, stream: false, options: { temperature: 0.1, num_ctx: 12288 } }),
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(300_000),
     });
   } catch {
     throw new HttpError(503, powerManaged() ? "The AI is still starting up. Ask again in a minute." : `The local model isn't reachable at ${L.ollamaUrl}. Start Ollama, then run: ollama pull ${L.model}`);
