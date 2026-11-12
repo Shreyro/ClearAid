@@ -385,7 +385,8 @@ Old routes (`/approvals`, `/bank-accounts`, `/bank-transactions`, `/team`, `/ven
 | `OLLAMA_URL`, `COPILOT_MODEL`, `LOCAL_VISION_MODEL` | backend | `http://127.0.0.1:11434`, `llama3.1:8b`, `llava` | Local models |
 | `RAG_URL`, `RAG_TOKEN` | backend + rag | `http://127.0.0.1:8790`, empty | Search/OCR service |
 | `AI_HOST` | backend | empty | Derives `OLLAMA_URL` and `RAG_URL` on a private network |
-| `RENDER_API_KEY`, `RENDER_AI_SERVICE_ID`, `AI_IDLE_MINUTES` | backend | empty, `20` | Suspend/resume the hosted AI |
+| `RENDER_API_KEY`, `RENDER_AI_SERVICE_ID`, `AI_IDLE_MINUTES` | backend | empty, `10` | Suspend/resume the hosted AI |
+| `PAYPAL_PARTNER_BN_CODE` | backend | empty | Optional PayPal partner attribution (BN) code |
 | `RAG_HOST`, `RAG_PORT`, `RAG_DATA`, `EMBED_MODEL`, `OCR_GPU` | rag | `127.0.0.1`, `8790`, `rag/.index`, `nomic-embed-text`, `auto` | rag service |
 | `BACKEND_URL`, `NEXT_OUTPUT` | frontend | `http://localhost:4000` | API proxy target; standalone build |
 | `WEB_PORT`, `PUBLIC_URL`, `COMPOSE_PROFILES`, `OLLAMA_VERSION` | `.env` (Compose) | `3000`, `http://localhost:3000`, `ollama` | Docker stack |
@@ -406,7 +407,7 @@ Old routes (`/approvals`, `/bank-accounts`, `/bank-transactions`, `/team`, `/ven
 
 ## 11. Testing
 
-- `cd backend && npm test`: 79 unit tests (Node test runner via `tsx`) covering anonymisation, embeds (privacy over the full demo data set), PayPal accounts and partner, Pay via PayPal, transfers, bank sync, declared payments/entry metadata, returns, closure, Copilot scope and chats, OCR post-processing.
+- `cd backend && npm test`: 91 unit tests (Node test runner via `tsx`) covering anonymisation, embeds (privacy over the full demo data set), PayPal accounts and partner, Pay via PayPal, transfers, bank sync, declared payments/entry metadata, returns, closure, Copilot scope and chats, OCR post-processing.
 - `cd backend && npm run typecheck` and `cd frontend && npm run typecheck && npm run lint`.
 - `docs/postman/`: a collection that exercises every API route, with sample receipts and its last HTML report.
 

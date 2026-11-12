@@ -217,6 +217,8 @@ Backend settings go in `backend/.env` (template: `backend/.env.example`). Docker
 | `SESSION_SECRET` | Signs sign-in cookies and derives the key that encrypts stored PayPal and bank secrets. Set a long random value in production and keep it fixed; otherwise one is generated and stored in the data folder |
 | `DATA_DIR`, `PORT`, `APP_URL` | Data folder (default `.data`), API port (4000), and the public URL used in PayPal return links |
 | `ALLOW_DEMO_RESET=false` | Turns off **Reset demo data** |
+| `AI_HOST`, `AI_IDLE_MINUTES`, `RENDER_API_KEY`, `RENDER_AI_SERVICE_ID` | Hosted-AI setup: `AI_HOST` derives `OLLAMA_URL` and `RAG_URL` on a private network; the Render pair plus `AI_IDLE_MINUTES` (default 10, minimum 2) suspend and resume the hosted AI |
+| `PAYPAL_PARTNER_BN_CODE` | Optional PayPal partner attribution (BN) code sent with partner calls |
 
 Everything is behind sign-in except a fund's donation page (`/give/<fund>`) and published embeds (`/embed/<key>`). Passwords are scrypt-hashed and the session cookie is HMAC-signed.
 
@@ -350,7 +352,7 @@ The API runs from the Docker image in `backend/` with a persistent disk (`cleara
 cd backend && npm test
 ```
 
-79 unit tests cover anonymisation, embed privacy (over the full demo data), PayPal accounts and partner onboarding, Pay via PayPal, PayPal transfers, bank sync, declared payments and entry metadata, donor returns, fund closure, Copilot scope and chats, and OCR post-processing. Type checks: `npm run typecheck` in `backend/` and `frontend/`; lint: `npm run lint` in `frontend/`. A Postman collection that exercises every API route, with sample receipts and its last report, is in [`docs/postman/`](docs/postman/README.md).
+91 unit tests cover anonymisation, embed privacy (over the full demo data), PayPal accounts and partner onboarding, Pay via PayPal, PayPal transfers, bank sync, declared payments and entry metadata, donor returns, fund closure, Copilot scope and chats, and OCR post-processing. Type checks: `npm run typecheck` in `backend/` and `frontend/`; lint: `npm run lint` in `frontend/`. A Postman collection that exercises every API route, with sample receipts and its last report, is in [`docs/postman/`](docs/postman/README.md).
 
 ## Project layout
 
