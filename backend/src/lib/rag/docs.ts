@@ -153,6 +153,8 @@ export function buildIndexes(db: DB): Record<string, Doc[]> {
  * Exact figures for one fund, worked out from the ledger when the question is
  * asked (search finds passages; totals have to be computed, not guessed).
  */
+const pct = (part: number, whole: number) => `${((part / whole) * 100).toFixed(1)}%`;
+
 export function fundSummary(db: DB, f: Fund, audience: Audience) {
   const s = fundStats(db, f);
   const flow = buildFlow(db, [f], { ngoId: f.ngoId, includeUntraced: false, payeeLimit: 12 });
@@ -178,6 +180,9 @@ export function fundSummary(db: DB, f: Fund, audience: Audience) {
     `REFUNDED TO DONORS: ${money(s.refunded)}`,
     `CARRIED TO OTHER FUNDS: ${money(s.carriedOut)}`,
     `BALANCE STILL HELD: ${money(s.balance)} (goal ${money(f.goal)})`,
+    // Worked out here so the model copies the percentages instead of dividing.
+    f.goal > 0 ? `PROGRESS TO GOAL: raised ${pct(s.raised, f.goal)} of the goal so far; the balance still held is ${pct(s.balance, f.goal)} of the goal` : "",
+    `LIFECYCLE: ${f.status === "closing" ? `CLOSING: the fund is winding down${f.closingStartedAt ? ` (started ${f.closingStartedAt.slice(0, 10)})` : ""}` : f.status === "closed" ? "CLOSED" : "ACTIVE: still open and receiving or spending money"}`,
     `NUMBER OF DONORS: ${s.donors}`,
     flow.sources.length ? `LARGEST SOURCES OF MONEY IN:\n${flow.sources.slice(0, 8).map(party).join("\n")}` : "",
     flow.payees.length ? `LARGEST PAYEES (MONEY OUT):\n${flow.payees.slice(0, 10).map(party).join("\n")}` : "",
