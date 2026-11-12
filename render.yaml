@@ -5,8 +5,8 @@ envVarGroups:
     envVars:
       - key: RAG_TOKEN
         generateValue: true
-      - key: COPILOT_MODEL # the API asks for it, the AI service downloads it. llama3.2:3b is faster on CPU, a little less accurate
-        value: llama3.1:8b
+      - key: COPILOT_MODEL # the API asks for it, the AI service downloads it. the small 3B model keeps the AI service on an 8 GB plan; llama3.1:8b is more accurate but needs 16 GB (plan pro max)
+        value: llama3.2:3b
 
 services:
   # API: the backend Docker image
@@ -90,7 +90,7 @@ services:
     rootDir: .
     dockerfilePath: ./ai/Dockerfile
     dockerContext: .
-    plan: pro max # 16 GB RAM; check the name and price in the Render dashboard
+    plan: pro plus # 8 GB RAM is enough for llama3.2:3b, the embedding model and OCR; check the name and price in the Render dashboard
     disk:
       name: clearaid-ai-data
       mountPath: /data
