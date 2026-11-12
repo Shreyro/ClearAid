@@ -92,3 +92,27 @@ export const ago = (iso: string) => {
 };
 
 export const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+let aiFlag: boolean | undefined;
+let aiAsk: Promise<boolean> | undefined;
+
+/**
+ * Whether AI features exist at all. False on the hosted version (RENDER_MODE=YES),
+ * and false until the server has answered, so nothing AI-related flashes on screen first.
+ */
+export function useAiEnabled() {
+  const [on, setOn] = useState(aiFlag ?? false);
+  useEffect(() => {
+    if (aiFlag !== undefined) return setOn(aiFlag);
+    aiAsk ??= api<{ ai?: { enabled?: boolean } }>("/api/config").then(
+      (c) => (aiFlag = c.ai?.enabled !== false),
+      () => false,
+    );
+    let live = true;
+    void aiAsk.then((v) => live && setOn(v));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return on;
+}

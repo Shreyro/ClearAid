@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, FileText, Link2Off, Loader2, Paperclip, PenLine, ScanLine, Upload, X } from "lucide-react";
 import clsx from "clsx";
-import { api, useJson, useLive, usd } from "./hooks";
+import { api, useAiEnabled, useJson, useLive, usd } from "./hooks";
 import { CAT_LABEL } from "./SpendCard";
 import { Empty, Pill } from "./ui";
 
@@ -46,7 +46,9 @@ async function uploadReceipt(file: File, read: boolean): Promise<Scan> {
  * hand and attach the receipt if there is one (it can also be attached later).
  */
 export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string; title: string }[]; isAdmin: boolean; onDone: (message: string) => void }) {
-  const [mode, setMode] = useState<"ai" | "manual">("ai");
+  const ai = useAiEnabled();
+  const [pickedMode, setMode] = useState<"ai" | "manual">("ai");
+  const mode = ai ? pickedMode : "manual";
   const [scan, setScan] = useState<Scan | null>(null);
   const [scanning, setScanning] = useState(false);
   const [f, setF] = useState({ fundId: funds[0]?.id ?? "", category: "", amountUsd: "", payee: "", date: today(), method: "bank_transfer", invoiceNumber: "", description: "" });
@@ -125,14 +127,14 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
             Money paid out of a fund. {mode === "ai" ? "Upload the receipt or invoice (a photo or a PDF): it's read on this machine (OCR, then the local AI model) and the details are filled in for you to check." : "Type the details in, and attach the receipt or invoice if you have it (you can also attach it later)."} It goes on the fund&apos;s ledger and the audit log under your name. A bank payment is matched to its bank line when the statement comes in, so it&apos;s only counted once. {!isAdmin && "You can record for funds you're an approver on."}
           </p>
         </div>
-        <div className="flex rounded-lg border border-line p-1 text-xs font-semibold shrink-0" role="radiogroup" aria-label="How to fill in the payment">
+        {ai && <div className="flex rounded-lg border border-line p-1 text-xs font-semibold shrink-0" role="radiogroup" aria-label="How to fill in the payment">
           <button type="button" role="radio" aria-checked={mode === "ai"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "ai" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("ai")}>
             <ScanLine className="h-3.5 w-3.5" aria-hidden /> Read the receipt
           </button>
           <button type="button" role="radio" aria-checked={mode === "manual"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "manual" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("manual")}>
             <PenLine className="h-3.5 w-3.5" aria-hidden /> Enter by hand
           </button>
-        </div>
+        </div>}
       </div>
 
       {mode === "ai" && !scan ? (
@@ -227,7 +229,7 @@ export function RecordPayment({ funds, isAdmin, onDone }: { funds: { id: string;
                   <label className={clsx("flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-sm cursor-pointer hover:border-brand", scanning && "opacity-70 pointer-events-none")}>
                     {scanning ? <Loader2 className="h-4 w-4 animate-spin text-brand" /> : <Paperclip className="h-4 w-4 text-brand" aria-hidden />}
                     <span>{scanning ? "Attaching…" : "Attach an image or PDF"}</span>
-                    <span className="text-xs text-muted">stored as evidence, not read by AI</span>
+                    <span className="text-xs text-muted">{ai ? "stored as evidence, not read by AI" : "stored as evidence"}</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" disabled={scanning} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(file); }} />
                   </label>
                 )}

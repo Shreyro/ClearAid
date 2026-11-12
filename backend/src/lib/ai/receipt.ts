@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { aiEnabled } from "../config";
+import { aiEnabled, renderMode } from "../config";
 import type { BankReceipt, StoredFile } from "../types";
 import { imageOf, localModel, structured } from "./local";
 import { isoDate, printedCode, printedTotal, readText } from "./ocr";
@@ -56,7 +56,7 @@ function tidy(x: z.infer<typeof Schema>, text?: string): NonNullable<BankReceipt
 }
 
 export async function scanReceipt(f: StoredFile): Promise<Result> {
-  if (!aiEnabled()) return { engine: "none", note: "AI reading is off (LOCAL_AI=off). The file is stored and hashed; fill in details by hand." };
+  if (!aiEnabled()) return { engine: "none", note: renderMode ? "The file is stored and hashed; fill in the details by hand." : "AI reading is off (LOCAL_AI=off). The file is stored and hashed; fill in details by hand." };
 
   // 1. OCR the text, then the local LLM reads it.
   const ocr = await readText(f);

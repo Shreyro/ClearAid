@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { BadgeCheck, Building2, KeyRound, Loader2, PenLine, Plus, Sparkles, Trash2, UserPlus, Users, Wand2, X } from "lucide-react";
 import clsx from "clsx";
-import { api, ago, useJson, useLive, usd } from "@/components/hooks";
+import { api, ago, useAiEnabled, useJson, useLive, usd } from "@/components/hooks";
 import { Empty, Pill, RiskBadge, Section, StatusIcon, StatusPill } from "@/components/ui";
 import { CAT_LABEL, type WView } from "@/components/SpendCard";
 import { CodesEditor } from "@/components/banking";
@@ -171,10 +171,10 @@ export function Queue({ me, onGoToAccess }: { me: Member; onGoToAccess: () => vo
               </div>
               <p className="text-sm text-ink-2 mt-2">{w.purpose}</p>
               {w.status === "auditing" ? (
-                <div className="mt-3 text-sm text-ink-2 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Redacting personal data and auditing receipt + photos…</div>
+                <div className="mt-3 text-sm text-ink-2 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Auditing the request…</div>
               ) : w.audit ? (
                 <div className="mt-3 rounded-lg bg-sunken p-3 text-sm">
-                  <div className="flex items-start gap-2"><Sparkles className="h-4 w-4 text-brand mt-0.5 shrink-0" /><span>{w.audit.summary}</span></div>
+                  <div className="flex items-start gap-2"><BadgeCheck className="h-4 w-4 text-brand mt-0.5 shrink-0" /><span>{w.audit.summary}</span></div>
                   {[...fails, ...warns].slice(0, 4).map((c) => (
                     <div key={c.id} className="flex items-start gap-2 mt-1.5 text-xs"><StatusIcon status={c.status} className="h-3.5 w-3.5 mt-0.5" /><span><b>{c.label}:</b> {c.detail}</span></div>
                   ))}
@@ -550,7 +550,9 @@ const CATS = Object.keys(CAT_LABEL);
 const blankDraft = (): Draft => ({ title: "", disaster: "", region: "", description: "", goal: 0, lat: 0, lng: 0, needs: [{ item: "", category: "food", unit: "", targetQty: 1, unitCost: 0 }], categoryCaps: {}, engine: "manual" });
 
 function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCard[] }) {
-  const [mode, setMode] = useState<"ai" | "manual">("ai");
+  const ai = useAiEnabled();
+  const [pickedMode, setMode] = useState<"ai" | "manual">("ai");
+  const mode = ai ? pickedMode : "manual";
   const [brief, setBrief] = useState("");
   const [d, setD] = useState<Draft | null>(null);
   const [donorReturns, setDonorReturns] = useState(false);
@@ -622,14 +624,14 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
               : "Fill in the fund yourself: its name, what it's for and its goal. Needs, spending caps and location are optional and can be left out. Then give it the tracking codes that bank and PayPal payments will carry."}
           </p>
         </div>
-        <div className="flex rounded-lg border border-line p-1 text-xs font-semibold shrink-0" role="radiogroup" aria-label="How to set up the fund">
+        {ai && <div className="flex rounded-lg border border-line p-1 text-xs font-semibold shrink-0" role="radiogroup" aria-label="How to set up the fund">
           <button type="button" role="radio" aria-checked={mode === "ai"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "ai" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("ai")}>
             <Sparkles className="h-3.5 w-3.5" aria-hidden /> Draft with AI
           </button>
           <button type="button" role="radio" aria-checked={mode === "manual"} className={clsx("rounded-md px-3 py-1.5 inline-flex items-center gap-1.5", mode === "manual" ? "bg-brand text-white" : "text-ink-2")} onClick={() => switchMode("manual")}>
             <PenLine className="h-3.5 w-3.5" aria-hidden /> Fill in by hand
           </button>
-        </div>
+        </div>}
       </div>
       {mode === "ai" && (
         <>
@@ -704,6 +706,7 @@ function CreateFund({ onCreated, funds }: { onCreated: () => void; funds: FundCa
 // ------------------------------------------------------------------- Team ----
 
 export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Promise<void> }) {
+  const aiOn = useAiEnabled();
   const { data, reload } = useJson<{ members: TeamMember[] }>("/api/ngo/members");
   const access = useAccess();
   const isAdmin = me.role === "admin";
@@ -886,7 +889,7 @@ export function Team({ me, onSelfChange }: { me: Member; onSelfChange: () => Pro
               {form.role === "admin"
                 ? "Admins manage the team, fund assignments, funds and vendors."
                 : form.role === "donor"
-                  ? "Donors get read-only access to the funds you tick for them after creating the login: money flow, transactions, funds and Copilot answers, with private details redacted. No settings, sources or audit log."
+                  ? "Donors get read-only access to the funds you tick for them after creating the login: money flow, transactions, funds" + (aiOn ? " and Copilot answers" : "") + ", with private details redacted. No settings, sources or audit log."
                   : "Staff start with no funds. Assign them under Funds & access, or they can ask to join a fund."}
             </p>
             <button className="btn btn-primary w-full" disabled={Boolean(busy) || !form.name.trim() || !form.username.trim() || form.password.length < 8}>

@@ -6,7 +6,7 @@ import { Check, Clock, FileText, History, Loader2, Paperclip, Plus, Receipt, Tag
 import clsx from "clsx";
 import { Page, useMe } from "@/components/AppShell";
 import { AnonymisedNote, CodeChip, SUBCODE_HINT } from "@/components/banking";
-import { api, useJson, useLive, usd } from "@/components/hooks";
+import { api, useAiEnabled, useJson, useLive, usd } from "@/components/hooks";
 import { CAT_LABEL } from "@/components/SpendCard";
 import { Empty, Pill } from "@/components/ui";
 import { DataGrid } from "@/components/DataGrid";
@@ -587,6 +587,7 @@ function PendingPanel({ t, onDone }: { t: Txn; onDone: (m: string) => Promise<vo
 
 /** Receipts and invoices attached to a bank line as evidence. Reading them never changes the tag. */
 function ReceiptsPanel({ t, onChanged }: { t: Txn; onChanged: (m: string) => Promise<void> }) {
+  const ai = useAiEnabled();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function upload(file: File) {
@@ -629,7 +630,7 @@ function ReceiptsPanel({ t, onChanged }: { t: Txn; onChanged: (m: string) => Pro
       </div>
       {t.receipts.length === 0 ? (
         <p className="text-xs text-muted mt-1">
-          Attach the invoice or bill behind this {t.amount < 0 ? "payment" : "receipt"} (image or PDF, up to 8 MB). It&apos;s read on this machine (OCR, then the local AI model), and a fixed rule checks it against the amount, date and payee. It never changes the tag.
+          Attach the invoice or bill behind this {t.amount < 0 ? "payment" : "receipt"} (image or PDF, up to 8 MB). It&apos;s {ai ? "read on this machine (OCR, then the local AI model), and a fixed rule checks it" : "stored and hashed as evidence, and a fixed rule checks it"} against the amount, date and payee. It never changes the tag.
         </p>
       ) : (
         <ul className="mt-2 grid md:grid-cols-2 gap-2">

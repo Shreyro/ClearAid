@@ -37,7 +37,7 @@ export function RiskBadge({ score, verdict }: { score?: number | null; verdict?:
 }
 
 const STATUS: Record<string, { label: string; tone: "neutral" | "good" | "warn" | "bad" | "brand" | "info" }> = {
-  auditing: { label: "AI auditing…", tone: "info" },
+  auditing: { label: "Auditing…", tone: "info" },
   pending_approval: { label: "Awaiting approval", tone: "warn" },
   paid: { label: "Paid via PayPal", tone: "good" },
   rejected: { label: "Rejected", tone: "bad" },

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, BadgeCheck, Bot, Camera, CheckCircle2, CircleDollarSign, EyeOff, FileText, Loader2, MapPin, RefreshCw, ScrollText, Users } from "lucide-react";
-import { api, useJson, useLive, usd } from "@/components/hooks";
+import { api, useAiEnabled, useJson, useLive, usd } from "@/components/hooks";
 import { Meter, Pill, RiskBadge, Section, StatusIcon, StatusPill } from "@/components/ui";
 import { CAT_LABEL, type WView } from "@/components/SpendCard";
 import { DataGrid } from "@/components/DataGrid";
@@ -13,6 +13,7 @@ type Sess = { session: { role: string; id?: string; name?: string; member?: { ro
 export function SpendDetail({ id }: { id: string }) {
   const { data: w, error, reload } = useJson<WView & { fundId: string; signing?: { youAreAssigned: boolean; approvers: { id: string; name: string }[] }; approvals: (WView["approvals"][number] & { by?: string })[] }>(`/api/withdrawals/${id}`);
   const { data: sess } = useJson<Sess>("/api/session");
+  const ai = useAiEnabled();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -105,9 +106,9 @@ export function SpendDetail({ id }: { id: string }) {
       <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-6 mt-6">
         <div className="space-y-6 min-w-0">
           <Section
-            title={<span className="flex items-center gap-2"><Bot className="h-4 w-4 text-brand" /> AI audit report</span>}
+            title={<span className="flex items-center gap-2">{ai ? <Bot className="h-4 w-4 text-brand" /> : <BadgeCheck className="h-4 w-4 text-brand" />} {ai ? "AI audit report" : "Audit report"}</span>}
             action={
-              a && (
+              a && ai && (
                 <Pill tone={a.engine === "local" || a.engine === "claude" ? "brand" : "neutral"}>
                   {a.seeded ? "Sample audit (demo data)" : a.engine === "local" ? `Local model · ${a.model}` : a.engine === "claude" ? `Claude · ${a.model}` : "Rules only (local AI unavailable)"}
                 </Pill>
@@ -115,7 +116,7 @@ export function SpendDetail({ id }: { id: string }) {
             }
           >
             {!a ? (
-              <div className="flex items-center gap-2 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin" /> The local model is reading the receipt and checking the photos…</div>
+              <div className="flex items-center gap-2 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin" /> {ai ? "The local model is reading the receipt and checking the photos…" : "Checking the request against the rules…"}</div>
             ) : (
               <>
                 <div className="flex items-center gap-4">
@@ -132,13 +133,13 @@ export function SpendDetail({ id }: { id: string }) {
                 </div>
                 <div className="grid md:grid-cols-2 gap-5 mt-5">
                   <CheckList title="Rule checks (deterministic)" checks={ruleChecks} />
-                  <CheckList title="AI findings" checks={aiChecks} />
+                  {ai && <CheckList title="AI findings" checks={aiChecks} />}
                 </div>
               </>
             )}
           </Section>
 
-          {a?.receipt && (
+          {a?.receipt && ai && (
             <Section title={<span className="flex items-center gap-2"><FileText className="h-4 w-4" /> Receipt, as read by the AI</span>}>
               <div className="flex flex-wrap gap-6 text-sm">
                 <div><div className="text-xs text-muted">Vendor on receipt</div>{a.receipt.vendorName ?? "—"}</div>
@@ -209,7 +210,7 @@ export function SpendDetail({ id }: { id: string }) {
             <h2 className="font-semibold">Audit trail</h2>
             <ol className="mt-3 relative border-l border-line ml-1.5 space-y-4 text-sm">
               <Step done title="Request submitted" sub={new Date(w.createdAt).toLocaleString()} />
-              <Step done={Boolean(a)} title="AI + rule audit" sub={a ? `Risk ${a.riskScore}/100 · ${a.verdict.replace("_", " ")}` : "In progress"} />
+              <Step done={Boolean(a)} title={ai ? "AI + rule audit" : "Rule audit"} sub={a ? `Risk ${a.riskScore}/100 · ${a.verdict.replace("_", " ")}` : "In progress"} />
               {w.approvals.map((ap, i) => (
                 <Step key={i} done title={`${ap.decision === "approve" ? "Approved" : "Rejected"} by ${ap.name}`} sub={`${new Date(ap.at).toLocaleString()}${ap.note ? ` · ${ap.note}` : ""}`} bad={ap.decision === "reject"} />
               ))}
@@ -238,7 +239,7 @@ export function SpendDetail({ id }: { id: string }) {
                 <button className="btn btn-danger" disabled={Boolean(busy)} onClick={() => decide("reject")}>Reject</button>
               </div>
               <button className="btn btn-ghost w-full mt-2 text-xs" disabled={Boolean(busy)} onClick={reaudit}>
-                <RefreshCw className={`h-3.5 w-3.5 ${busy === "audit" ? "animate-spin" : ""}`} /> Re-run AI audit
+                <RefreshCw className={`h-3.5 w-3.5 ${busy === "audit" ? "animate-spin" : ""}`} /> {ai ? "Re-run AI audit" : "Re-run audit"}
               </button>
               {msg && <p className="text-sm mt-2">{msg}</p>}
             </section>

@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { aiEnabled } from "../config";
+import { aiEnabled, renderMode } from "../config";
 import { getDb, mutate, nowIso } from "../db";
 import { AI_ACTOR, audit as appendAudit } from "../audit";
 import { ruleChecks, rulesRisk } from "../checks";
@@ -86,17 +86,19 @@ export async function auditWithdrawal(withdrawalId: string): Promise<{ audit: Au
       verdict: fails ? (risk >= 60 ? "reject" : "needs_review") : "needs_review",
       summary: fails
         ? `Rule checks found ${fails} blocking issue${fails > 1 ? "s" : ""}. Manual review required.`
-        : "Rule checks passed. AI receipt and photo analysis is not configured, so a human reviewer should inspect the documents.",
+        : renderMode
+          ? "Rule checks passed. A human reviewer should inspect the documents."
+          : "Rule checks passed. AI receipt and photo analysis is not configured, so a human reviewer should inspect the documents.",
       photos: [],
       checks: [
         ...rules,
-        {
+        ...(renderMode ? [] : [{
           id: "ai_unavailable",
           label: "AI document audit",
-          status: "warn",
+          status: "warn" as const,
           detail: "Local AI is switched off (LOCAL_AI=off), so receipts and photos weren't checked automatically",
-          source: "ai",
-        },
+          source: "ai" as const,
+        }]),
       ],
     } };
   }
