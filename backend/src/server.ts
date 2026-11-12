@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import { logger } from "hono/logger";
 import type { Ctx } from "@/lib/http";
 import { aiEnabled } from "@/lib/config";
+import { ensureDemoEmbeds } from "@/lib/demo-embeds";
 import { startAiPower } from "@/lib/ai-power";
 import { startIndexing } from "@/lib/rag/copilot";
 import { startAutoSync } from "@/lib/bank-sync";
@@ -181,6 +182,7 @@ app.notFound((c) => c.json({ error: "Not found" }, 404));
 
 const port = Number(process.env.PORT) || 4000;
 // Keep the local Copilot's FAISS index in step with the data (needs rag/server.py running; harmless if it isn't).
+ensureDemoEmbeds();
 if (aiEnabled()) startIndexing();
 startAutoSync();
 if (aiEnabled()) startAiPower();

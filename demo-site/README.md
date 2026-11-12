@@ -2,13 +2,13 @@
 
 A small static website for the fictional **Coastal Relief Collective**, showing how an NGO puts ClearAid's public embeds on its own site. It is plain HTML and CSS with no build step, served from a different address (port 5500) than ClearAid (port 3000), the same as a real third-party website.
 
-| Page | Embed | Colours |
-|---|---|---|
-| `index.html` | All funds combined, with a line per fund, the money-flow diagram and the over-time chart | Dark, on a dark band of the page |
-| `asha.html` | One fund (Cyclone Asha): totals, channels, categories, registered payees, latest movements | Light |
-| `floods.html` | Two funds combined (Mahanadi + Monsoon), with a line per fund | Match the visitor's device (the page does too) |
+`index.html` shows three embeds:
 
-Each embed is exactly the code ClearAid gives under **Settings → Public embeds → Get code**: an `<iframe>` plus the optional `embed.js` that sizes the frame to fit. Nothing else from ClearAid is used.
+| Embed (key) | Shows | Colours |
+|---|---|---|
+| `demo-cyclone-asha` | One fund (Cyclone Asha): totals, channels, categories, registered payees, latest movements | Light |
+| `demo-floods` | Two funds combined (Mahanadi and Monsoon), with a line per fund | Match the visitor's device |
+| `demo-all-funds` | Every fund, with a line per fund, the money-flow diagram and the over-time chart | Dark |
 
 ## Run it
 
@@ -21,10 +21,18 @@ Each embed is exactly the code ClearAid gives under **Settings → Public embeds
 
 3. Open http://localhost:5500.
 
-## Using your own embeds
+## How it finds ClearAid
 
-The three embeds were published from the demo admin login (`priya`) and are listed in ClearAid under Settings → Public embeds as "Demo site: …". If you reset the demo data, they're deleted, and the pages show "These figures are no longer published". To fix that, create new embeds and paste their code over the `<iframe>` lines (or replace the key after `/embed/`).
+`clearaid.js` decides where ClearAid is: on `localhost` it uses your local ClearAid (port 3000); anywhere else it uses the hosted one (`HOSTED` at the top of that file, `https://clearaid-web.onrender.com`). Change `HOSTED` if your hosted ClearAid has another address.
 
-Change something in ClearAid (record a payment, tag a bank line, switch an embed's colours or funds) and the pages update by themselves within a minute, with no change to this site.
+## The embeds
 
-For a real deployment, replace `http://localhost:3000` with ClearAid's public address.
+The three embeds use fixed demo keys (`demo-all-funds`, `demo-cyclone-asha`, `demo-floods`). ClearAid creates them by itself when it starts, in a fresh local copy and on the hosted demo, so nothing has to be pasted and a data reset brings them back. To stop that, set `DEMO_EMBEDS=off` on the backend.
+
+A real NGO website instead pastes the code ClearAid gives under **Settings, Public embeds, Get code**: an `<iframe>` plus the optional `embed.js`. Nothing else from ClearAid is used.
+
+Change something in ClearAid (record a payment, tag a bank line, switch an embed's colours or funds) and the page updates by itself within a minute, with no change to this site.
+
+## Hosting it
+
+`render.yaml` deploys this folder as the static site `clearaid-demo` on Render (no build step).
