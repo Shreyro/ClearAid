@@ -43,6 +43,20 @@ function Rich({ text, sources }: { text: string; sources?: Source[] }) {
 }
 
 export default function CopilotPage() {
+  const { data: cfg } = useJson<{ ai?: { enabled: boolean } }>("/api/config");
+  if (!cfg) return null;
+  if (cfg.ai?.enabled === false)
+    return (
+      <Page title="Copilot" subtitle="Not available on this hosted version">
+        <div className="rounded-xl border border-line bg-surface p-6 text-sm text-ink-2 max-w-xl">
+          The AI Copilot and the other AI features are turned off here. They run only when ClearAid is installed and run on your own computer, where the model stays on your machine. Everything else works as normal.
+        </div>
+      </Page>
+    );
+  return <CopilotChat />;
+}
+
+function CopilotChat() {
   const { me } = useMe();
   const { data: status, reload: reloadStatus } = useJson<Status>("/api/copilot");
   const { data: chatList, reload: reloadChats } = useJson<{ chats: ChatItem[] }>("/api/copilot/chats");

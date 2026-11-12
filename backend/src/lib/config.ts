@@ -1,6 +1,8 @@
 import path from "node:path";
 
 /** Host of the AI service on a private network (e.g. Render's `clearaid-ai`); the two URLs below are derived from it. */
+/** RENDER_MODE=YES (the hosted deployment) turns every AI feature off. Unset or NO: AI is on, for people who run the code on their own machine. */
+export const renderMode = process.env.RENDER_MODE?.trim().toUpperCase() === "YES";
 const aiHost = process.env.AI_HOST?.trim() || "";
 
 export const config = {
@@ -48,7 +50,7 @@ export const config = {
    */
   local: {
     /** LOCAL_AI=off switches every AI feature to its non-AI fallback. */
-    ai: process.env.LOCAL_AI?.trim().toLowerCase() !== "off",
+    ai: !renderMode && process.env.LOCAL_AI?.trim().toLowerCase() !== "off",
     ollamaUrl: (process.env.OLLAMA_URL?.trim() || (aiHost ? `http://${aiHost}:11434` : "http://127.0.0.1:11434")).replace(/\/$/, ""),
     model: process.env.COPILOT_MODEL?.trim() || "llama3.1:8b",
     /** Used only for receipts and photos, and only if the main model can't see images. */

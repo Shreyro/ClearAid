@@ -381,6 +381,7 @@ Old routes (`/approvals`, `/bank-accounts`, `/bank-transactions`, `/team`, `/ven
 | `PLAID_REDIRECT_URI`, `PLAID_WEBHOOK_URL` | backend | empty | OAuth banks; webhook URL |
 | `PLAID_COUNTRY_CODES`, `PLAID_HISTORY_DAYS`, `PLAID_SYNC_MINUTES` | backend | `US`, `730`, `60` | Link countries, first-sync history, fallback timer |
 | `LOCAL_AI` | backend | on | `off` = heuristic fallbacks only |
+| `RENDER_MODE` | backend | `NO` | `YES` = all AI features and the Copilot off (hosted deployment); unset or `NO` = AI on |
 | `OLLAMA_URL`, `COPILOT_MODEL`, `LOCAL_VISION_MODEL` | backend | `http://127.0.0.1:11434`, `llama3.1:8b`, `llava` | Local models |
 | `RAG_URL`, `RAG_TOKEN` | backend + rag | `http://127.0.0.1:8790`, empty | Search/OCR service |
 | `AI_HOST` | backend | empty | Derives `OLLAMA_URL` and `RAG_URL` on a private network |

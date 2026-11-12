@@ -37,6 +37,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Public donation links (/give/<fund>) and embeds (/embed/<key>) are for outsiders: no sign-in, no app chrome, no session lookups.
   const bare = path.startsWith("/give/") || path.startsWith("/embed/");
   const { data: sess, reload } = useJson<Sess>(bare ? null : "/api/session");
+  const { data: cfg } = useJson<{ ai?: { enabled: boolean } }>(bare ? null : "/api/config");
   // The mobile drawer remembers the page it was opened on, so navigating closes it.
   const [navOpenAt, setNavOpenAt] = useState<string | null>(null);
   const navOpen = navOpenAt === path;
@@ -56,7 +57,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const isAdmin = me.role === "admin";
   const isDonor = me.role === "donor";
-  const nav = isDonor ? NAV.filter((n) => donorMayOpen(n.href)) : NAV;
+  // The hosted version (RENDER_MODE=YES) has no AI: hide the Copilot.
+  const base = cfg?.ai?.enabled === false ? NAV.filter((n) => n.href !== "/copilot") : NAV;
+  const nav = isDonor ? base.filter((n) => donorMayOpen(n.href)) : base;
   const blocked = isDonor && !donorMayOpen(path);
   const active = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`) || (href === "/transactions" && path.startsWith("/spend/")));
 

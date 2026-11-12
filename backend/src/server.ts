@@ -1,7 +1,8 @@
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { logger } from "hono/logger";
 import type { Ctx } from "@/lib/http";
+import { aiEnabled } from "@/lib/config";
 import { startAiPower } from "@/lib/ai-power";
 import { startIndexing } from "@/lib/rag/copilot";
 import { startAutoSync } from "@/lib/bank-sync";
@@ -150,6 +151,12 @@ const DONOR_ROUTES = new Set([
 export const app = new Hono();
 app.use(logger());
 app.get("/healthz", (c) => c.json({ ok: true }));
+// RENDER_MODE=YES: the hosted deployment has no AI. The Copilot is only for people running ClearAid on their own machine.
+const noAi = (c: Context) => c.json({ error: "The AI Copilot is turned off on this hosted version. Run ClearAid on your own computer to use it." }, 403);
+for (const path of ["/api/copilot", "/api/copilot/*"]) app.use(path, async (c, next) => {
+  if (aiEnabled()) return next();
+  return noAi(c);
+});
 
 for (const [path, mod] of routes) {
   for (const method of ["GET", "POST"] as const) {
@@ -174,9 +181,9 @@ app.notFound((c) => c.json({ error: "Not found" }, 404));
 
 const port = Number(process.env.PORT) || 4000;
 // Keep the local Copilot's FAISS index in step with the data (needs rag/server.py running; harmless if it isn't).
-startIndexing();
+if (aiEnabled()) startIndexing();
 startAutoSync();
-startAiPower();
+if (aiEnabled()) startAiPower();
 
 const server = serve({ fetch: app.fetch, port, hostname: process.env.HOST || "0.0.0.0" }, (info) => {
   console.log(`[clearaid] API listening on http://${info.address}:${info.port}`);

@@ -280,7 +280,7 @@ Browser ─► Next.js dev :3000 ─► Hono API :4000 ─► rag/server.py :879
 
 - `clearaid-api`: Docker web service with a persistent disk for the data.
 - `clearaid-web`: the Next.js web service.
-- `clearaid-ai`: a private service (`ai/Dockerfile`, `ai/start.sh`) running Ollama plus the rag/OCR service on a 16 GB instance (llama3.1:8b) with a model disk. The API suspends it after `AI_IDLE_MINUTES` without use and resumes it on the next AI request (`lib/ai-power.ts`, using the Render API).
+- No AI service on Render: `clearaid-api` sets `RENDER_MODE=YES`, which disables every AI feature (`aiEnabled()` is false, the Copilot routes return 403, the page is hidden). The AI runs only on a machine where the code is run locally (`RENDER_MODE` unset or `NO`). `ai/` and `lib/ai-power.ts` remain for anyone who hosts the AI themselves.
 
 ## 8. Operating modes
 
