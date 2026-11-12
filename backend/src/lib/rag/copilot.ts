@@ -152,6 +152,10 @@ export async function askCopilot(args: { session: Session; question: string; fun
   const allowedIds = new Set(scope.funds.map((f) => f.id));
   const base = { model: L.model, search: "faiss" as const };
 
+  // Greetings and thanks aren't questions about the records: answer directly, without searching, history or waking the AI.
+  const small = smallTalk(args.question, me.name);
+  if (small) return { ...base, reply: small, sources: [], scope: { funds: [], narrowed: false } };
+
   // The AI may be asleep to save cost: wake it, and ask the person to come back in a minute.
   if (powerManaged()) {
     const woke = await wakeAi();
@@ -229,6 +233,17 @@ export async function askCopilot(args: { session: Session; question: string; fun
     search,
     model: L.model,
   };
+}
+
+/** A reply for a bare greeting or thanks, or undefined when the message is a real question. */
+function smallTalk(q: string, name: string): string | undefined {
+  const t = q.toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return undefined;
+  const first = name.split(" ")[0];
+  if (/^(hi|hello|hey|hiya|howdy|yo|good (morning|afternoon|evening)|greetings)( there| copilot)?$/.test(t))
+    return `Hi ${first}! Ask me about your funds: where money came from, where it went, what's untagged, or which fund is closest to its goal.`;
+  if (/^(thanks|thank you|thx|ty|cheers|great|ok|okay|cool|got it)( thanks| a lot| so much)?$/.test(t)) return "You're welcome. Ask me anything else about your funds.";
+  return undefined;
 }
 
 /** What the Copilot page shows above the chat: model, search status and the funds this person can ask about. */
