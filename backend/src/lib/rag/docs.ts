@@ -181,7 +181,7 @@ export function fundSummary(db: DB, f: Fund, audience: Audience) {
     `CARRIED TO OTHER FUNDS: ${money(s.carriedOut)}`,
     `BALANCE STILL HELD: ${money(s.balance)} (goal ${money(f.goal)})`,
     // Worked out here so the model copies the percentages instead of dividing.
-    f.goal > 0 ? `PROGRESS TO GOAL: raised ${pct(s.raised, f.goal)} of the goal so far; the balance still held is ${pct(s.balance, f.goal)} of the goal` : "",
+    f.goal > 0 ? `PROGRESS TO GOAL: raised ${money(s.raised)} of the ${money(f.goal)} goal (${pct(s.raised, f.goal)}); the balance still held, ${money(s.balance)}, is ${pct(s.balance, f.goal)} of the goal` : "",
     `LIFECYCLE: ${f.status === "closing" ? `CLOSING: the fund is winding down${f.closingStartedAt ? ` (started ${f.closingStartedAt.slice(0, 10)})` : ""}` : f.status === "closed" ? "CLOSED" : "ACTIVE: still open and receiving or spending money"}`,
     `NUMBER OF DONORS: ${s.donors}`,
     flow.sources.length ? `LARGEST SOURCES OF MONEY IN:\n${flow.sources.slice(0, 8).map(party).join("\n")}` : "",
