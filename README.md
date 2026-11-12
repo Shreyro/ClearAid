@@ -1,38 +1,210 @@
 # ClearAid: Financial Controls for Relief NGOs on PayPal
 
-**Every relief dollar, accounted for.** ClearAid is a governance, risk and compliance (GRC) platform for NGOs running disaster-relief funds on PayPal. Staff see every dollar in and out on a tamper-evident ledger, payouts are AI-audited and need human sign-off from assigned approvers, and every action lands in a hash-chained audit log. It is an internal tool: only NGO staff sign in. The public sees a fund's donation link and whatever figures an admin chooses to publish as an embed, and nothing else.
+**Every relief dollar, accounted for.** ClearAid is a governance, risk and compliance (GRC) tool for NGOs running disaster-relief funds on PayPal. It traces every dollar from where it came from (PayPal gifts, bank transfers, grants), to the fund it belongs to, to who it was paid to, and keeps the evidence with it. Money movements sit on a tamper-evident ledger per fund. Payments are checked by fixed rules and a local AI model and signed by people. Every action lands in a hash-chained audit log.
 
-> Built for the PayPal AI Hackathon. The demo scenario (Cyclone Asha, Coastal Relief Collective and the rest) is fictional.
+It's an internal tool: only NGO staff (and read-only donor logins an admin creates) sign in. The public sees a fund's donation page and whatever figures an admin chooses to publish as an embed, and nothing else. **All AI runs locally** (Ollama + FAISS): no donor, beneficiary or bank data goes to a cloud AI service.
+
+> Built for the PayPal AI Hackathon. The demo scenario (Cyclone Asha, Coastal Relief Collective and everyone in it) is fictional.
+
+**Documentation:** [Business requirements (BRD)](docs/BRD.md) · [High-level design (HLD)](docs/HLD.md) · [Low-level design (LLD)](docs/LLD.md) · [Demo recording script](docs/DEMO_SCRIPT.md) · [Postman collection](docs/postman/README.md)
+
+---
+
+## Contents
+
+- [Why it matters](#why-it-matters)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Run it in Docker](#run-it-in-docker)
+- [How the PayPal integration works](#how-the-paypal-integration-works)
+- [Connecting banks with Plaid](#connecting-banks-with-plaid)
+- [How the AI works](#how-the-ai-works)
+- [How embedding works](#how-embedding-works)
+- [Testing](#testing)
+- [Project layout](#project-layout)
+- [Troubleshooting](#troubleshooting)
+- [Known limits](#known-limits)
+- [Future scope](#future-scope)
 
 ## Why it matters
 
-Relief NGOs move money fast under pressure, and auditors, boards and grant makers later ask who approved what, on what evidence. ClearAid makes those controls part of the payment system:
+Relief NGOs move money fast under pressure, and auditors, boards and grant makers later ask who approved what, on what evidence. ClearAid builds those controls into the way money is recorded:
 
 | Risk | Control in ClearAid |
 |---|---|
-| Fake or inflated invoices | A local AI model reads every receipt and checks it against the request. Rule checks catch reused receipts, reused photos (perceptual hash), photos taken before the crisis or far from it, over-priced units and budget breaches |
-| One person moving money alone | Only people assigned to a fund can sign; large payouts need two different assigned approvers. Funds with fewer than two approvers are flagged |
-| Unverified payees | Payouts go only to vendors an admin has verified (KYB) |
+| Money that can't be tied to an appeal | Every fund has tracking codes (`#RO1`, `#ASHA-MED`). Bank lines and PayPal gifts carrying one are traced automatically; everything else waits in one **Untagged** queue with the reason |
+| Fake or inflated invoices | A local AI model reads every receipt. Rule checks catch reused receipts, reused photos (perceptual hash), photos taken before the crisis or far from it, over-priced units and budget breaches |
+| One person moving money alone | Only people assigned to a fund can sign its payments; large ones need two different approvers. Large manual tags and every retag need a second person. Funds with fewer than two approvers are flagged |
+| Unverified payees | Payouts go only to payees an admin has verified |
 | Altered records | Each fund's ledger and the NGO-wide audit log are SHA-256 hash chains, re-verifiable in the browser |
-| Beneficiary privacy | AI + regex PII redaction on request text; photos with identifiable people stay restricted |
-| Publishing more than intended | Nothing is public by default. An admin picks, block by block, what a fund's embed shows and previews exactly that before it goes live; the public response is built from that list alone, so who gave, staff names, bank references, tracking codes and the audit log can't leak through it. Every change to an embed is audit-logged, and an embed can be paused or deleted at once |
-| Personal data in bank statements | Every bank line is anonymised before it is stored: names of private individuals become stable aliases (`Person-3F9A2C`), and account numbers, phone numbers, emails and ID numbers are redacted. Fixed rules, no AI |
+| Personal data in bank statements | Every bank line is anonymised **before it is stored**: private individuals become stable aliases (`Person-3F9A2C`); account numbers, UPI IDs, phones, emails and ID numbers are redacted. Fixed rules, no AI |
+| Beneficiary privacy | Regex + local AI redaction of request text; photos with identifiable people stay private |
+| Publishing more than intended | Nothing is public by default. An admin picks, block by block, what an embed shows and previews exactly that. The public response is built from that list alone, so donors, staff names, bank references and the audit log can't leak through it |
 
 ## Features
 
-- **Overview**: cash position across funds, requests waiting for your signature, control status (dual-approval coverage, segregation of duties, ledger and audit-chain integrity, payee verification, evidence coverage, overhead caps, review timeliness), open risks, cash-flow chart and recent activity
-- **Approvals**: review queue with the AI audit summary, failed checks and signatures; approval triggers a **PayPal Payouts** batch. **AI fast lane** pays clean, low-risk requests under a per-fund limit
-- **Transactions**: every money movement across your funds (PayPal donations, staff-recorded bank transfers / cheques / grants, payouts, refunds, carry-forwards) with filters and CSV export. Staff can **record incoming money** received outside PayPal
-- **Bank accounts**: add accounts for **CSV statement upload** (columns auto-detected, mapping remembered, duplicate files and rows skipped) or connect a bank with **Plaid** (Link + `/transactions/sync`; a simulated bank feed when no Plaid keys are set)
-- **Tracking codes & Bank tagging**: each fund has one or more codes (e.g. `#RO1`, `#ASHA`); a bank line whose description carries one is tagged to that fund and posted to its ledger, optionally with a budget category (`#RO1-MED`). Lines with no code, an unknown code or codes for two funds wait in the **Bank tagging** queue, where staff tag, split, bulk-tag or retag them with a required reason. Bank fees stay in the general fund unless they carry a code. Tagging is rule-based only, never AI
-- **Record a payment from its receipt**: on **Transactions → Record payment**, staff upload a receipt or invoice (or type the details in by hand); the local AI model reads it (supplier, invoice number, date, total, line items, any tracking code printed on it) and pre-fills the form, the person checks and corrects it (changed fields are noted in the audit log), and the payment is posted to the fund's ledger with the receipt attached. A bank transfer, card or cheque payment then waits for its bank line: when a statement or bank feed brings in a line with the same amount within 3 days before / 21 days after the receipt date, it is matched to the payment instead of being posted again, so the money is counted once. If the line is already on a fund, recording is stopped with a warning (or recorded anyway if it's a different payment). Cash payments never expect a bank line. Payments can be unlinked from a wrong bank line or voided (posted back) with a reason, under **Declared payments** (`backend/src/lib/payments.ts`)
-- **Statement anonymisation**: lines from a CSV upload or a bank feed are anonymised on the way in, before they reach the database, a fund ledger or the audit log. A private person's name is replaced with an alias that stays the same for that person across lines (a keyed hash, so it can't be reversed by guessing), and account / card numbers, UPI handles, phone numbers, emails and ID numbers become placeholders such as `[ACCOUNT ••9301]`. Organisations, registered payees, tracking codes, amounts and the bank's own reference are kept, so the money trail still reads. The upload preview shows the rows as they will be stored (`backend/src/lib/anonymise.ts`)
-- **Public embeds**: put a fund's figures, or several funds added together (tick the funds, or "All funds" to include ones created later, with an optional line per fund), on any website with an `<iframe>`, in light, dark or "match the visitor's device" colours. Under **Settings → Public embeds** an admin chooses what to publish (totals; money in by channel; spending by category; who was paid, either registered payees only or every payee; a money-flow diagram; money in and out over time; the latest ledger movements; a ledger integrity proof), sees a live preview of exactly what the public will get, and copies the code. The embed keeps itself up to date, fits its own height, works on phones, and can be paused (same link, shows a notice) or deleted. The same figures are available as JSON for sites that want to draw their own (`backend/src/lib/embed.ts`)
-- **Audit log**: sign-ins (and failed attempts), signatures, rejections, payouts, access changes, team changes, fund setup, vendor changes, refunds, data exports and what was published in each embed, with filters, CSV export and in-browser chain verification
-- **Funds & access**: who can approve each fund, join requests (approved by someone other than the requester), AI fund setup and **fund closure** (admins only, from the fund page): the admin chooses how much of the leftover moves to which other open funds; whatever isn't moved stays in the bank, held and tracked on the closed fund, and can still be moved later
-- **Team**: admins create logins, change roles, reset passwords (which signs the person out everywhere) and deactivate accounts
-- **Donor logins (read-only)**: admins can give a donor a login that only sees where the money went, for the funds the admin ticks for them under **Settings → Team** (audit-logged): Money flow, Transactions, Funds, spend details and Copilot answers, with the same redacted view the public gets (no unredacted text, private files, contact emails or untraced bank lines). Settings, Sources, Untagged and Audit log are hidden, and the server refuses every other request from a donor (an allowlist in `backend/src/server.ts`, so new routes are closed to donors by default). Demo: `maya` / `donor-demo`
-- **Copilot (local, private)**: ask in plain language where money came from and where it went. A local **Llama 3.1 8B** (Ollama) answers from a **FAISS** index of every record in ClearAid (ledger entries and memos, bank lines, declared payments and their receipt line items, payment requests, fund profiles), plus exact per-fund totals worked out from the ledger. Nothing leaves the machine. Access is enforced before search, not by the model: admins can ask about every fund, staff only the funds they're assigned to, donors only the funds an admin assigned them (and only the redacted passages). Naming a fund narrows the answer to it; naming one you can't see is refused. Answers cite the records used
+The app has eight screens. Donor logins see only Money flow, Transactions, Funds and Copilot, for the funds an admin assigned them, in redacted form.
+
+| Screen | What it does |
+|---|---|
+| **Money flow** | Money in, money out, still held and not yet traced; a source → fund → destination diagram (by category or by payee); biggest sources and payees; money in vs out over time; latest movements |
+| **Transactions** | Every movement across your funds (PayPal gifts, bank lines, money recorded by staff, payments, payouts, refunds, carry-forwards) with filters, a *Missing documents* filter and CSV export. **Record payment** reads a receipt with the local AI and pre-fills the form. **Record incoming** logs cheques, cash and grants. **Pay via PayPal** sends a payout from a fund. Click any row to add your own tags or attach an invoice or receipt that arrived later. **Evidence →** opens a payment's AI audit |
+| **Untagged** | Bank lines that couldn't be traced to exactly one fund (no code, unknown code, codes for two funds). Tag, split, bulk-tag or retag them with a required reason. Tags at or above the threshold, and every retag, wait under *Waiting for approval* for a second person. Also tabs for missing receipts, bank fees and PayPal transfers |
+| **Funds** | Each fund's flow, sources and payees, donation link, embed shortcut, money in vs out, spending by category, and its hash-chained **ledger** with **Verify hash chain**. Admins close funds here and decide where the leftover goes |
+| **Sources** | PayPal accounts (keys, **Connect with PayPal** partner onboarding, or simulated) with a reconciliation of collected, refunded, paid out, moved to the bank and still in PayPal. Bank accounts by **CSV statement upload** (columns auto-detected, preview of the anonymised rows, duplicates skipped) or **Plaid** (simulated feed without keys). Fee rules and PayPal links per bank account |
+| **Audit log** | Sign-ins (and failed attempts), tags and approvals, payments, payouts, access and team changes, fund setup, payee changes, refunds, exports and embed changes, with filters, CSV export and **Verify chain** |
+| **Settings** | **Team** (logins, roles, password resets that sign the person out everywhere, deactivation, donor fund access, *Can send PayPal payments*), **Fund access** (assignments and join requests approved by someone else), **Funds & tracking codes** (including AI fund drafting and each fund's PayPal account), **Controls** (tag sign-off threshold, receipt threshold, bank-fee policy), **Payees** (register and verify), **Public embeds** |
+| **Copilot** | Ask in plain language where money came from and went. A local Llama 3.1 8B answers from a FAISS index of every record plus exact totals from the ledger, and cites the records. Access is enforced before search: admins ask about every fund, staff about their funds, donors about their assigned funds (redacted) |
+
+**Payment requests and AI audit.** A payee's payment request carries the receipt and proof-of-delivery photos. Deterministic rules plus a local vision model score it, and its page (`/spend/<id>`) shows the risk score, every check, the receipt as read, the evidence and the signatures. Approval releases a **PayPal payout**. The **AI fast lane** may pay clean, low-risk requests under a per-fund limit; a failed rule check can never be auto-approved.
+
+**Recording a payment from its receipt.** Upload a receipt or invoice. It's read on this machine (OCR, then the local model) for supplier, invoice number, date, total, line items and any tracking code printed on it. The person checks it (changes are noted in the audit log) and it's posted to the fund's ledger. A bank transfer, card or cheque payment then waits for its bank line: a line with the same amount from 3 days before to 21 days after the receipt date is **matched** to it instead of being counted again. Payments can be unlinked or voided with a reason (`backend/src/lib/payments.ts`).
+
+**PayPal money reaching the bank.** Link each bank account to the PayPal accounts that withdraw into it. Deposits that read like a PayPal transfer are then marked as **transfers**: they never go on a fund (the money was counted when the gifts came in) and have their own tab on Untagged (`backend/src/lib/transfers.ts`).
+
+**Fund closure and leftover money.** An admin starts closing a fund (new money stops), moves any part of the leftover to other open funds (unspent PayPal gifts move with it pro-rata, so donors can follow their share), and closes it. Whatever isn't moved stays held and tracked on the closed fund. If the fund allows it, donors who ticked *return my share* when they gave get `leftover × (their gifts ÷ raised)` back, as a PayPal refund (gifts under 180 days old) or a payout (`backend/src/lib/returns.ts`).
+
+## Architecture
+
+```mermaid
+flowchart LR
+  B[Browser] --> W[web · Next.js :3000]
+  W -->|/api/* proxy| A[backend · Hono :4000]
+  A --> S[(JSON store<br/>db.json + uploads)]
+  A --> R[rag · FAISS + OCR :8790]
+  A --> O[Ollama :11434]
+  R --> O
+  A <--> P[PayPal]
+  A <--> L[Plaid]
+```
+
+- **web** (`frontend/`): Next.js 16, React 19, Tailwind 4, AG Grid and AG Charts. It proxies `/api/*` to the backend (`BACKEND_URL`).
+- **backend** (`backend/`): Hono on Node 22, TypeScript and Zod. It holds every business rule, both hash chains, the auth gate, PayPal and Plaid, and the AI orchestration. Data is one JSON file with atomic writes.
+- **rag** (`rag/`): a Python service for FAISS search (Copilot) and OCR (receipts).
+- **Ollama**: local models `llama3.1:8b`, `nomic-embed-text` and `llava`.
+
+Details: [HLD](docs/HLD.md) (components, flows, security, deployment) and [LLD](docs/LLD.md) (data model, algorithms, API reference, configuration).
+
+## Quick start
+
+**You need:** [Node.js 22+](https://nodejs.org) and [Git](https://git-scm.com). For the AI features you also need [Ollama](https://ollama.com/download) and Python 3.10+.
+
+```bash
+git clone https://github.com/Shreyro/ClearAid.git
+```
+
+```bash
+cd ClearAid
+```
+
+**1. Start the API** (port 4000), in its own terminal:
+
+```bash
+cd backend && npm install && npm run dev
+```
+
+**2. Start the web UI** (port 3000), in a second terminal:
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+**3. Open http://localhost:3000** and click one of the demo logins:
+
+| Username | Password | Role |
+| --- | --- | --- |
+| `priya` | `admin-demo` | Admin: everything, including team, access, funds, payees, sources and embeds |
+| `daniel` | `user-demo` | Staff: assigned to all three funds |
+| `meera` | `user-demo` | Staff: no funds yet, has a pending request to join Monsoon Preparedness |
+| `maya` | `donor-demo` | Donor (read-only): sees the Cyclone Asha fund, redacted |
+
+That's enough to use the whole app in **demo mode**: PayPal and the bank feed are simulated (IDs start with `SIM-`) and AI features use non-AI fallbacks, all clearly labelled. Admins can **Reset demo data** from the bottom of the sidebar.
+
+**4. Turn on the local AI** (Copilot, receipt reading, AI audits). Install Ollama from https://ollama.com/download. It's a desktop program; `pip install ollama` only installs the Python library and won't give you the `ollama` command. Then pull the models:
+
+```bash
+ollama pull llama3.1:8b && ollama pull nomic-embed-text && ollama pull llava
+```
+
+Start the search and OCR service in a third terminal (it listens on `127.0.0.1:8790`; the backend fills its index automatically):
+
+```bash
+pip install -r rag/requirements.txt
+```
+
+```bash
+python rag/server.py
+```
+
+Without Ollama or the rag service the rest of the app still works; the Copilot page says what's missing (and falls back to keyword search if only FAISS is down).
+
+**5. Optional: real PayPal and Plaid sandboxes.** Copy `backend/.env.example` to `backend/.env`, add the keys (see [Configuration](#configuration)), and restart the backend.
+
+**6. Optional: the demo NGO website** that shows embeds on a separate site (port 5500). See [`demo-site/README.md`](demo-site/README.md).
+
+```bash
+python -m http.server 5500 --directory demo-site
+```
+
+To record a demo, follow [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
+
+## Configuration
+
+Backend settings go in `backend/.env` (template: `backend/.env.example`). Docker settings go in `.env` at the root (template: `.env.example`). The full list is in [LLD §9](docs/LLD.md#9-configuration).
+
+| Variables | Effect |
+|---|---|
+| *(none)* | Demo mode: simulated PayPal and bank feed, non-AI fallbacks if Ollama isn't running |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV` | The NGO's **main** PayPal account (sandbox by default): real orders, captures, payouts and refunds. Use a sandbox business account with Payouts enabled. More accounts (one per appeal or office) are added on **Sources → PayPal accounts** with their own REST keys, checked with PayPal and stored AES-256-GCM encrypted; each fund's donation page pays into the account chosen under **Settings → Funds** |
+| `PAYPAL_WEBHOOK_ID` | Verifies PayPal webhooks at `/api/paypal/webhook`. Subscribe to `PAYMENT.CAPTURE.*`, `PAYMENT.PAYOUTS-ITEM.*` and `CUSTOMER.DISPUTE.CREATED`. Accounts added on Sources use `/api/paypal/webhook?account=<id>` with their own webhook ID |
+| `PAYPAL_PARTNER_CLIENT_ID`, `PAYPAL_PARTNER_CLIENT_SECRET`, `PAYPAL_PARTNER_MERCHANT_ID`, `PAYPAL_PARTNER_WEBHOOK_ID` | ClearAid's PayPal partner (platform) app. Enables **Connect with PayPal**: the NGO logs in to PayPal and grants ClearAid permission to take payments and refund for that account (Partner Referrals); no NGO keys are stored. PayPal doesn't let a partner send payouts from someone else's account, so returns by payout from those accounts are flagged to do by hand. Webhooks: `/api/paypal/webhook?account=partner`. Live use needs PayPal's Multiparty approval |
+| `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` | Real Plaid on **Sources** (sandbox by default; sandbox login `user_good` / `pass_good`). Access tokens are stored AES-256-GCM encrypted. See [Connecting banks with Plaid](#connecting-banks-with-plaid) |
+| `COPILOT_MODEL`, `LOCAL_VISION_MODEL`, `OLLAMA_URL`, `LOCAL_AI` | Local AI (defaults `llama3.1:8b`, `llava` for images only, `http://127.0.0.1:11434`, on). `LOCAL_AI=off` uses the non-AI fallbacks everywhere |
+| `RAG_URL`, `RAG_TOKEN` | The search/OCR service (default `http://127.0.0.1:8790`, no token). Set the same `RAG_TOKEN` for `rag/server.py` if other users share the machine |
+| `SESSION_SECRET` | Signs sign-in cookies and derives the key that encrypts stored PayPal and bank secrets. Set a long random value in production and keep it fixed; otherwise one is generated and stored in the data folder |
+| `DATA_DIR`, `PORT`, `APP_URL` | Data folder (default `.data`), API port (4000), and the public URL used in PayPal return links |
+| `ALLOW_DEMO_RESET=false` | Turns off **Reset demo data** |
+
+Everything is behind sign-in except a fund's donation page (`/give/<fund>`) and published embeds (`/embed/<key>`). Passwords are scrypt-hashed and the session cookie is HMAC-signed.
+
+**Data from the sandboxes only.** `cd backend && npm run sandbox:data` resets the app to a clean start (the NGO, logins, funds with their codes, and payees, with no transactions). It then adds the NGO's US sandbox PayPal business account from `../.env.sandbox-accounts`, gives test-card donations that are real captures in the PayPal sandbox, and connects dummy Plaid sandbox banks whose operations account receives withdrawals of that PayPal balance. Every transaction then exists in PayPal's or Plaid's sandbox.
+
+## Run it in Docker
+
+`docker-compose.yml` starts the whole stack: web UI, API, the FAISS/OCR service and Ollama, each restarting on failure and starting in order.
+
+```bash
+cp .env.example .env
+```
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:3000. Only the web UI is published; the API, rag and Ollama talk on a private network, and the UI proxies `/api/*` to the API (so PayPal webhooks go to `<PUBLIC_URL>/api/paypal/webhook`).
+
+| Service | Image | Keeps its data in |
+| --- | --- | --- |
+| `web` | `frontend/Dockerfile` (Next.js standalone build) | n/a |
+| `backend` | `backend/Dockerfile` | volume `clearaid-data`: `db.json`, uploads, the session secret |
+| `rag` | `rag/Dockerfile` | volume `clearaid-rag`: FAISS indexes and the embedding cache |
+| `ollama` | `ollama/ollama` | volume `clearaid-models`: the models (profile `ollama`) |
+| `models-embed`, `models-chat`, `models-vision` | `ollama/ollama` | one-shot jobs that pull `nomic-embed-text`, `llama3.1:8b` and `llava` (profile `ollama`) |
+| `tunnel` | `cloudflare/cloudflared` | n/a (profile `tunnel`: a public HTTPS address) |
+
+The first start downloads about 5 GB of models. The app works straight away; the Copilot answers once `docker compose logs -f models-chat` shows the pull has finished. Llama needs about 6 GB of memory for containers. On a Linux host with an NVIDIA GPU, uncomment the `deploy` block under `ollama` for much faster answers. `COMPOSE_PROFILES` in `.env` picks the optional parts. Without `ollama`, set `OLLAMA_URL=http://host.docker.internal:11434` to use an Ollama already running on the host.
+
+**Production-like on one machine:** `node scripts/prod-local.mjs` creates `.env` with fixed random secrets, uses the host's Ollama if one is running, starts a Cloudflare quick tunnel, and writes its HTTPS address into `PUBLIC_URL`, `PLAID_REDIRECT_URI` and `PLAID_WEBHOOK_URL`. It then builds and starts the stack and waits until it's healthy. A quick tunnel gets a new address on every start, so run the script again after a restart and update the URLs it prints in the Plaid and PayPal dashboards. `node scripts/prod-local.mjs --down` stops it.
+
+**Render:** `render.yaml` deploys `clearaid-api`, `clearaid-web` and a private `clearaid-ai` (Ollama + the search/OCR service, 16 GB, model disk). The API suspends the AI service after `AI_IDLE_MINUTES` (default 20) without AI use and resumes it on the next question (needs `RENDER_API_KEY` and `RENDER_AI_SERVICE_ID`). The first answer after a sleep takes 1–2 minutes.
+
+For production, set a long random `SESSION_SECRET` and `RAG_TOKEN` (`openssl rand -hex 32`), set `PUBLIC_URL` to the address people use, and serve over HTTPS. Back up the `clearaid-data` volume; the other two can be rebuilt. `docker compose down` stops everything and keeps the data (`-v` deletes it).
 
 ## How the PayPal integration works
 
@@ -41,178 +213,129 @@ sequenceDiagram
   participant D as Donor
   participant C as ClearAid
   participant P as PayPal
-  participant V as Vendor
-  D->>C: Donate (JS SDK v6 one-time payment session)
-  C->>P: POST /v2/checkout/orders (DONATION item)
+  participant V as Payee
+  D->>C: Donate on /give/<fund> or an embed (PayPal JS SDK buttons)
+  C->>P: POST /v2/checkout/orders (fund's PayPal account, tracking code as reference)
   D->>P: Approve in PayPal
   C->>P: POST /v2/checkout/orders/{id}/capture
-  C->>C: Ledger entry (hash-chained), pro-rata pool
-  V->>C: Withdrawal request + receipt + photos
-  C->>C: PII redaction, rule checks, local AI audit
-  C->>C: NGO approval (dual signature ≥ threshold)
-  C->>P: POST /v1/payments/payouts → vendor
-  P-->>C: Webhooks (payout status, refunds, disputes)
-  C->>P: POST /v2/payments/captures/{id}/refund (leftovers)
+  C->>C: Ledger entry (hash-chained), donor pool for pro-rata attribution
+  C->>C: Payment request: receipt + photos → rules + local AI audit → signatures
+  C->>P: POST /v1/payments/payouts → verified payee
+  P-->>C: Webhooks (captures, refunds, payout items, disputes), signature-verified
+  C->>P: POST /v2/payments/captures/{id}/refund (leftover returns to donors who asked)
 ```
 
 | PayPal capability | Where |
 |---|---|
-| JavaScript SDK v6 (`createInstance`, `createPayPalOneTimePaymentSession`, `<paypal-button>`) | `src/components/DonateBox.tsx` |
-| Orders v2 create/capture | `src/lib/paypal.ts`, `src/app/api/paypal/orders/**` |
-| Payouts | `sendVendorPayout` in `src/lib/paypal.ts`, called by `payWithdrawal` in `src/lib/funds.ts` |
-| Partial capture refunds | `refundCapture` in `src/lib/paypal.ts`, used to return leftover money to donors who asked (`src/lib/returns.ts`) |
-| Webhooks + signature verification | `src/app/api/paypal/webhook/route.ts` (capture completed, refunds made outside ClearAid, payout item status, disputes) |
-| Transaction search (reconciliation) | `listRecentTransactions` in `src/lib/paypal.ts` |
+| JavaScript SDK buttons | `frontend/src/components/DonateForm.tsx` |
+| Orders v2 create / capture | `createDonationOrder`, `captureDonationOrder` in `backend/src/lib/paypal.ts`; routes `backend/src/routes/give/[slug]/order` and `/capture` |
+| Payouts | `sendVendorPayout` (called by `payWithdrawal` in `backend/src/lib/funds.ts`) and `sendPayout` (**Pay via PayPal**, `backend/src/lib/paypal-pay.ts`; donor returns) |
+| Capture refunds | `refundCapture`, used for leftover returns (`backend/src/lib/returns.ts`) |
+| Webhooks + signature verification | `verifyWebhook` in `paypal.ts`; `backend/src/routes/paypal/webhook/route.ts` |
+| Partner Referrals (connect by login) | `backend/src/lib/paypal-partner.ts`, return page `frontend/src/app/paypal/connected` |
+| Transaction search (reconciliation) | `listRecentTransactions` in `paypal.ts` |
 
-**Production money flow.** In this hackathon build, donations settle in one PayPal business account and ClearAid's ledger keeps a sub-ledger per fund. For production we would onboard each NGO through PayPal Multiparty with delayed disbursement, so funds sit with PayPal until an approved withdrawal releases them.
+**Production money flow.** In this build, donations settle in the NGO's PayPal account(s) and ClearAid keeps a sub-ledger per fund. For production we would onboard each NGO through PayPal Multiparty with delayed disbursement, so funds stay with PayPal until an approved payment releases them.
+
+## Connecting banks with Plaid
+
+An admin presses **Connect with Plaid** on **Sources** and logs in to the NGO's bank in Plaid's own window; ClearAid never sees the bank password. Every account the bank login shares (checking, savings…) becomes its own ClearAid account, and they sync together. The first sync brings in up to two years of history (`PLAID_HISTORY_DAYS`). After that:
+
+- **Plaid's webhook** (`PLAID_WEBHOOK_URL` → `/api/plaid/webhook`) says when new transactions are ready, and ClearAid pulls them at once. Only webhooks signed by Plaid are accepted (ES256 JWT, body hash, 5-minute window).
+- **A timer** syncs every connected bank every `PLAID_SYNC_MINUTES` (default 60) as a fallback, and **Sync all banks** does it on demand.
+- **Expired logins** are flagged on Sources, in the audit log and from Plaid's ITEM webhooks. **Log in again** opens Link in update mode, keeping the account's history.
+- **Banks that log in on their own website** (OAuth) return to `/oauth/plaid`. Set `PLAID_REDIRECT_URI` to that page's URL and add it to the Plaid dashboard.
+
+In the Plaid sandbox, `npm run plaid:sandbox-banks -- --paypal main` (in `backend/`) adds matching PayPal withdrawals to a dummy bank and links the two. To host it: get production access in the Plaid dashboard, set `PLAID_ENV=production`, serve over HTTPS, and set `PLAID_REDIRECT_URI` and `PLAID_WEBHOOK_URL`. `PLAID_COUNTRY_CODES` widens Link beyond US banks. Only USD, posted transactions are imported.
 
 ## How the AI works
 
-All AI runs locally through Ollama; nothing is sent to a cloud AI service. Every feature uses the same model as the Copilot (`COPILOT_MODEL`, default `llama3.1:8b`), which Ollama keeps loaded between calls. Outputs are constrained to a JSON schema and checked before use (`src/lib/ai/local.ts`).
-
-Receipts and invoices are read OCR + LLM: the `rag/` service extracts the text (EasyOCR for photos and scanned pages, with lines rebuilt top to bottom and corrected for a tilted photo; a digital PDF's own text layer), the same local model turns the text into fields, and fixed rules then check what the text can prove: the tracking code is taken only from the printed text, dates are normalised and sanity-checked, and the printed total is a fallback (`rag/ocr.py`, `src/lib/ai/ocr.ts`). Only delivery photos, which aren't text, need a model that can see: `LOCAL_VISION_MODEL` (default `llava`), used just for that call (and for receipts if OCR isn't running).
+All AI runs locally through Ollama. Every feature uses the Copilot's model (`COPILOT_MODEL`, default `llama3.1:8b`), which Ollama keeps loaded between calls; outputs are constrained to a JSON schema and validated before use (`backend/src/lib/ai/local.ts`). Only images that aren't text (delivery photos) need a model that can see: `LOCAL_VISION_MODEL` (default `llava`).
 
 | Feature | Technique | File |
 |---|---|---|
-| PII redaction | Regex pass first (always runs), then the local model's structured output | `src/lib/ai/redact.ts` |
-| Withdrawal audit | Local vision model over receipt and photo images, plus request context and rule results, returned as a typed `AuditSchema` (risk, verdict, line items, per-photo findings) | `src/lib/ai/audit.ts` |
-| Deterministic checks | Vendor verification, balance, limits, category caps, unit price vs need, duplicate receipt SHA-256, photo dHash Hamming distance, EXIF time and GPS distance | `src/lib/checks.ts` |
-| Crisis insights / fund drafting | Structured outputs grounded only in ledger data | `src/lib/ai/insights.ts` |
-| Copilot (local) | Retrieval-augmented answers: FAISS search (nomic-embed-text) plus a keyword pass over only the indexes the person may read, exact per-fund totals, Llama 3.1 8B via Ollama. One index per fund and audience (`staff` / redacted `public`) | `src/lib/rag/`, `rag/server.py` |
+| Receipt reading | OCR in `rag/` (EasyOCR for photos and scans, with lines rebuilt and tilt corrected; a PDF's own text layer), then the local model → fields; fixed rules take the tracking code only from the printed text and sanity-check dates and totals | `rag/ocr.py`, `backend/src/lib/ai/ocr.ts`, `backend/src/lib/ai/receipt.ts` |
+| PII redaction | Regex pass first (always runs), then the local model's structured output | `backend/src/lib/ai/redact.ts` |
+| Payment-request audit | Local vision model over receipt and photos, plus request context and rule results → typed risk, verdict, line items and per-photo findings | `backend/src/lib/ai/audit.ts` |
+| Deterministic checks | Payee verification, balance, limits, category caps, unit price vs need, duplicate receipt SHA-256, photo dHash distance, EXIF time and GPS distance | `backend/src/lib/checks.ts` |
+| Fund insights / fund drafting | Structured outputs grounded only in ledger data | `backend/src/lib/ai/insights.ts` |
+| Copilot | FAISS search (`nomic-embed-text`) plus a keyword pass over only the indexes the person may read, exact per-fund totals, Llama 3.1 8B. One index per fund and audience (`staff` / redacted `public`) | `backend/src/lib/rag/`, `rag/server.py` |
 
-The AI recommends and humans decide. A failed rule check can never be auto-approved, and every AI feature has a heuristic fallback, so the app runs end to end without Ollama (or with `LOCAL_AI=off`).
+The AI recommends and people decide. A failed rule check can never be auto-approved, tracing and anonymisation never use AI, and every AI feature has a non-AI fallback, so the app runs end to end without Ollama (or with `LOCAL_AI=off`).
 
 ## How embedding works
 
-An admin publishes an embed under **Settings → Public embeds** and pastes the generated code into the NGO's website:
+An admin builds an embed under **Settings → Public embeds**: one fund, several funds added together, or "All funds" (including ones created later); light, dark or "match the visitor's device"; and which blocks to publish (totals; money in by channel; spending by category; who was paid, registered payees only or every payee; a money-flow diagram; money in and out over time; the latest ledger movements; a ledger integrity proof; a PayPal donate form). A live preview shows exactly what the public will get. **Get code** gives:
 
 ```html
 <iframe data-clearaid-embed src="https://your-clearaid.example/embed/KEY" title="Cyclone Asha: where the money goes" loading="lazy" style="width:100%;max-width:760px;height:640px;border:0"></iframe>
 <script async src="https://your-clearaid.example/embed.js"></script>
 ```
 
-- The `<iframe>` alone is enough. The optional script only resizes the frame to fit: the embed posts its height to the host page, and the script applies it to frames that came from the same ClearAid site. It reads nothing from the host page.
-- `/embed/KEY` needs no sign-in, doesn't use cookies, and calls one endpoint, `GET /api/embed/KEY`, which returns only the blocks switched on for that embed (CORS is open, since the data is public and no credentials are involved). A paused, deleted or unknown key returns the same 404.
-- Amounts are totals from the fund's ledger; dates are to the day. Who gave, bank references, account names, tracking codes, staff names, approvals, receipts and the audit log are never part of the response, and a bank payment's own wording appears only if the admin chose "Name every payee" (`backend/src/lib/embed.test.ts` checks this against the whole demo data set).
+- The `<iframe>` alone is enough. The optional script only resizes the frame: the embed posts its height to the host page, and the script applies it to frames from the same ClearAid site. It reads nothing from the host page.
+- `/embed/KEY` needs no sign-in, uses no cookies, and calls one endpoint, `GET /api/embed/KEY`, which returns only the blocks switched on (CORS is open; the data is public). Paused, deleted and unknown keys all return the same 404. The same JSON is available to sites that want to draw their own.
+- Amounts are totals from the ledger, and dates are to the day. Donors, bank references, account names, staff names, approvals, receipts and the audit log are never part of the response. Tracking codes appear only with the donate form, and a bank payment's own wording only if the admin chose "Name every payee". `backend/src/lib/embed.test.ts` checks this against the whole demo data set.
+- Every embed change is audit-logged, and an embed can be paused (same link, shows a notice) or deleted at once.
 
-## Run it
-
-The app is two services: `backend/` (Hono API on port 4000) and `frontend/` (Next.js on port 3000, which proxies `/api/*` to the backend; set `BACKEND_URL` to point elsewhere).
-
-```bash
-cd backend && npm install && npm run dev
-```
+## Testing
 
 ```bash
-cd frontend && npm install && npm run dev
+cd backend && npm test
 ```
 
-For the Copilot, also run [Ollama](https://ollama.com) with the two models, and the FAISS search service (Python 3.10+):
-
-```bash
-ollama pull llama3.1:8b && ollama pull nomic-embed-text
-pip install -r rag/requirements.txt
-python rag/server.py          # listens on 127.0.0.1:8790; the backend fills it automatically
-```
-
-Without them the rest of the app works; the Copilot page says what's missing (and falls back to keyword search if only FAISS is down).
-
-Optionally copy `backend/.env.example` to `backend/.env` and add PayPal sandbox keys. All AI runs locally in Ollama (see below). `npm test` in `backend/` runs the statement-anonymisation and public-embed tests. A Postman collection that exercises every API route, with its last report, is in `docs/postman/`.
-
-Open http://localhost:3000 and sign in. Everything is behind sign-in except two kinds of page: a fund's donation link (`/give/<fund>`) and the embeds an admin has published (`/embed/<key>`). Passwords are scrypt-hashed and the session cookie is HMAC-signed (set `SESSION_SECRET` in production). The demo logins are listed on the sign-in page:
-
-| Username | Password | Role |
-| --- | --- | --- |
-| `priya` | `admin-demo` | Admin: full audit log, team and access management, funds and vendors |
-| `daniel` | `user-demo` | Staff: assigned to all three funds |
-| `meera` | `user-demo` | Staff: no funds yet, has a pending request to join Monsoon Preparedness |
-| `maya` | `donor-demo` | Donor (read-only): Money flow, Transactions and Funds across every fund, redacted; no settings or changes |
-
-Staff see only the funds they're assigned to (and the audit entries for those funds plus their own actions). Admins see everything.
-
-- **No keys:** "demo mode". PayPal calls are simulated (IDs prefixed `SIM-`) and AI features use heuristics. Everything is clearly labelled.
-- **`PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`:** real sandbox payouts and refunds. Use a sandbox business account with Payouts enabled, and give vendors sandbox personal-account emails. This is the NGO's **main** PayPal account. More accounts (one per appeal or office) are added by an admin on **Sources → PayPal accounts** with their own REST app keys, which are checked with PayPal and stored AES-256-GCM encrypted; each fund's donation link pays into the account chosen under **Settings → Funds**, and refunds go back through the account the gift landed in.
-- **`PAYPAL_WEBHOOK_ID`:** subscribe the webhook at `/api/paypal/webhook` to `PAYMENT.CAPTURE.*`, `PAYMENT.PAYOUTS-ITEM.*` and `CUSTOMER.DISPUTE.CREATED`. Accounts added on Sources use `/api/paypal/webhook?account=<id>` (shown on each account's card) and their own webhook ID.
-- **`PAYPAL_PARTNER_CLIENT_ID` / `PAYPAL_PARTNER_CLIENT_SECRET` / `PAYPAL_PARTNER_MERCHANT_ID` (and `PAYPAL_PARTNER_WEBHOOK_ID`):** ClearAid's PayPal partner (platform) app. With it, **Connect with PayPal** on Sources lets an admin connect any number of PayPal accounts by logging in to PayPal: ClearAid gets a sign-up link from PayPal (Partner Referrals), the NGO logs in and allows ClearAid to take payments and refund for that account, PayPal sends them back to `/paypal/connected`, and the server asks PayPal what was granted before the account goes live. No keys of the NGO's are stored. Gifts are paid straight to that merchant; refunds are made on its behalf (`PayPal-Auth-Assertion`). PayPal doesn't let a partner send payouts from someone else's account, so leftover returns by payout from those accounts are flagged to do by hand. Their webhooks come through the partner app at `/api/paypal/webhook?account=partner`. For live use, PayPal must approve the platform for Multiparty.
-- **`PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV`:** real Plaid (sandbox by default) on **Sources**; try Plaid's sandbox user `user_good` / `pass_good`. Without them, "Connect bank" adds a simulated feed. Access tokens are stored AES-256-GCM encrypted (keep `SESSION_SECRET` fixed, or connected banks must be linked again). See "Connecting banks with Plaid" below for hosting.
-
-### Connecting banks with Plaid
-
-An admin presses **Connect with Plaid** on **Sources** and logs in to the NGO's bank in Plaid's own window; ClearAid never sees the bank password. Every account the bank login shares (checking, savings…) becomes its own ClearAid account; they sync together. The first sync brings in up to two years of history (`PLAID_HISTORY_DAYS`), and after that:
-
-- **Plaid's webhook** (`PLAID_WEBHOOK_URL` → `/api/plaid/webhook`) says when new transactions are ready and ClearAid pulls them at once. Only webhooks signed by Plaid are accepted (ES256 JWT, body hash, 5-minute window).
-- **A timer** syncs every connected bank every `PLAID_SYNC_MINUTES` (default 60) as a fallback, and **Sync all banks** does it on demand.
-- **Expired logins** (a bank asks for the password again, consent runs out, access is revoked) are flagged on Sources, in the audit log, and from Plaid's ITEM webhooks; **Log in again** opens Link in update mode, keeping the account's history, and adds any newly shared accounts.
-- **Banks that log in on their own website** (OAuth, e.g. Chase) return to `/oauth/plaid`, which finishes the connection. Set `PLAID_REDIRECT_URI` to that page's URL and add it to the Plaid dashboard's allowed redirect URIs.
-
-**Tags and documents added later.** On **Transactions**, staff click any transaction to add the team's own category tags (created on the spot, e.g. "Boat hire"; any number per transaction) and to attach an invoice, receipt or other document that arrived after the money moved. **Missing documents** lists money out with no paperwork anywhere (a declared payment's receipt, a bank line's receipts, a payment request's receipts or a document added later); attaching to a declared payment without a receipt fills that payment's receipt. Tags filter the list and are in the CSV export. The ledger entries themselves never change; tags and documents are staff-only (never shown to donor logins or on embeds) and every change is audit-logged (`src/lib/entry-meta.ts`).
-
-**Paying someone through PayPal.** On **Transactions → Pay via PayPal**, a person picks a fund, a payee (a registered payee, or anyone's PayPal email), the amount and what it's for; ClearAid sends a PayPal payout from that fund's PayPal account and records it on the fund's ledger, the audit log and the PayPal account's reconciliation. Admins can always pay; an admin lets staff pay with **Can send PayPal payments** under **Settings → Team**, and staff can then pay only from the funds they're on. Payments can't exceed what the fund holds (less anything owed to donors), PayPal's single-payout cap is $10,000, and accounts connected by login can't send payouts. If PayPal reports a payout failed or came back, ClearAid voids it and posts the money back (`src/lib/paypal-pay.ts`).
-
-**PayPal money reaching the bank.** When a PayPal account withdraws its balance to the bank, the deposit is money ClearAid already counted when the gifts came in. An admin links each bank account to the PayPal accounts that withdraw into it (**PayPal link** on the bank account's card); deposits there that read like a PayPal transfer ("PAYPAL TRANSFER", "PAYPAL INST XFER"…) are then marked as **transfers** on import: they never go on a fund, can't be tagged (which would count the money twice), and have their own tab on Untagged. Admins can mark a line by hand or say it isn't a transfer. Each PayPal account's card reconciles it: collected, refunds and payouts, moved to the bank, and still in PayPal (before PayPal's fees), with a warning if more reached the bank than was collected (`src/lib/transfers.ts`). In the Plaid sandbox, `npm run plaid:sandbox-banks -- --paypal main` adds matching PayPal withdrawals to a dummy bank and links the two.
-
-**Data from the sandboxes only.** `cd backend && npm run sandbox:data` resets the app to a clean start (`POST /api/admin/reset` with `{"mode":"clean"}`: the NGO, logins, funds with their codes, and payees, with no transactions), adds the NGO's US sandbox PayPal business account from `../.env.sandbox-accounts` and points every fund at it, gives test-card donations that are real captures in the PayPal sandbox (`POST /api/give/<fund>/test-card`, admins, sandbox accounts only), then connects dummy Plaid sandbox banks whose operations account receives withdrawals of that PayPal balance. Every transaction then exists in PayPal's or Plaid's sandbox.
-
-To host it: get production access in the Plaid dashboard (company profile, use case, security questionnaire, Transactions pricing), set `PLAID_ENV=production` with the production secret, serve the app over HTTPS on your domain, and set `PLAID_REDIRECT_URI` and `PLAID_WEBHOOK_URL`. `PLAID_COUNTRY_CODES` widens Link beyond US banks where Plaid supports them. Only USD, posted transactions are imported.
-- **`COPILOT_MODEL` / `LOCAL_VISION_MODEL` / `OLLAMA_URL` / `LOCAL_AI`:** the local AI for everything: Copilot, audits, redaction, insights, fund drafts and receipt reading (defaults `llama3.1:8b`, `llava` for images only, `http://127.0.0.1:11434`, on). Pull both once: `ollama pull llama3.1:8b` and `ollama pull llava`.
-- **`RAG_URL` / `RAG_TOKEN`:** the Copilot's FAISS search (defaults `http://127.0.0.1:8790`, no token). Set the same `RAG_TOKEN` for `rag/server.py` if other users share the machine.
-
-Admins can reset the demo from the sidebar ("Reset demo data").
-
-### Run it in Docker (the whole stack, as you'd host it)
-
-`docker-compose.yml` starts everything together: the web UI, the API, the FAISS search service and Ollama, each restarting on failure and starting in order (the API waits for search, the UI waits for the API).
-
-```bash
-cp .env.example .env            # optional: port, public URL, SESSION_SECRET, RAG_TOKEN, models
-cp backend/.env.example backend/.env   # optional: PayPal and Plaid keys
-docker compose up -d --build
-```
-
-Open http://localhost:3000. Only the web UI is published; the API, search service and Ollama talk on a private network and the UI proxies `/api/*` to the API, so PayPal webhooks go to `<PUBLIC_URL>/api/paypal/webhook`.
-
-| Service | Image | Keeps its data in |
-| --- | --- | --- |
-| `web` | `frontend/Dockerfile` (Next.js standalone build) | — |
-| `backend` | `backend/Dockerfile` | volume `clearaid-data`: `db.json`, uploads, the session secret |
-| `rag` | `rag/Dockerfile` | volume `clearaid-rag`: FAISS indexes and the embedding cache |
-| `ollama` | `ollama/ollama` | volume `clearaid-models`: the models |
-| `models-embed`, `models-chat`, `models-vision` | `ollama/ollama` | one-shot jobs that pull `nomic-embed-text`, `llama3.1:8b` and `llava` (profile `ollama`) |
-| `tunnel` | `cloudflare/cloudflared` | — (profile `tunnel`: a public HTTPS address) |
-
-The first start downloads about 5 GB of models. The app works straight away; the Copilot answers once `docker compose logs -f models-chat` shows the pull finished. Llama needs about 6 GB of memory for containers. On a Linux host with an NVIDIA GPU, uncomment the `deploy` block under `ollama` for much faster answers.
-
-`COMPOSE_PROFILES` in `.env` picks the optional parts: `ollama` runs Ollama and its models in containers; without it, set `OLLAMA_URL=http://host.docker.internal:11434` to use an Ollama already running on the host (faster with a GPU, and no second copy of the models).
-
-**Production-like on one machine:** `node scripts/prod-local.mjs` does the above for you: it creates `.env` with fixed random secrets, uses the host's Ollama if one is running, starts a Cloudflare quick tunnel, writes its HTTPS address into `PUBLIC_URL`, `PLAID_REDIRECT_URI` and `PLAID_WEBHOOK_URL`, and builds and starts the stack (waiting until it's healthy). Sign-in cookies are marked `Secure` once the address is HTTPS. A quick tunnel gets a new address on every start: run the script again after a restart, then update the redirect URI in the Plaid dashboard and the webhook URL in PayPal's (the script prints both); connected banks' Plaid webhooks follow automatically. `node scripts/prod-local.mjs --down` stops it.
-
-For production, set a long random `SESSION_SECRET` and `RAG_TOKEN` in `.env` (`openssl rand -hex 32`), set `PUBLIC_URL` to the address people use, and put the published port behind a reverse proxy that terminates HTTPS. Back up the `clearaid-data` volume; the other two can be rebuilt. `docker compose down` stops everything and keeps the data (`-v` deletes it).
+79 unit tests cover anonymisation, embed privacy (over the full demo data), PayPal accounts and partner onboarding, Pay via PayPal, PayPal transfers, bank sync, declared payments and entry metadata, donor returns, fund closure, Copilot scope and chats, and OCR post-processing. Type checks: `npm run typecheck` in `backend/` and `frontend/`; lint: `npm run lint` in `frontend/`. A Postman collection that exercises every API route, with sample receipts and its last report, is in [`docs/postman/`](docs/postman/README.md).
 
 ## Project layout
 
 ```
-backend/src/lib/          domain logic (funds, ledger, audit log, banking, anonymise, embed, checks, paypal, session, seed)
-backend/src/lib/ai/       Local AI (Ollama): redaction, audit, insights, receipt reading
-backend/src/routes/       API routes (auth, overview, transactions, audit, funds, withdrawals, ngo/*, embeds; public: give/*, embed/*)
-frontend/src/app/         pages: / (money flow), /transactions, /untagged, /funds, /funds/[slug] (fund trail), /sources, /audit, /settings, /copilot; public: /give/[slug] (donation link), /embed/[key] (published figures)
-frontend/src/components/  AppShell, console (sign-in, queue, access, team, vendors), Embeds (admin) and EmbedView (the public widget), charts, grids
-frontend/public/embed.js   optional helper that fits an embed's height on the host page
-rag/server.py             FAISS search service for the Copilot (embeddings via Ollama)
-docker-compose.yml        the whole stack in containers (web, backend, rag, ollama)
+backend/src/server.ts       route table, sign-in gate, donor allowlist, background jobs
+backend/src/routes/         API routes, one route.ts per path (see LLD §7 for the full list)
+backend/src/lib/            domain logic: funds, ledger, audit log, banking, anonymise, payments,
+                            transfers, returns, embed, checks, paypal*, plaid, bank-sync, session, seed
+backend/src/lib/ai/         local AI: Ollama wrapper, OCR, receipt, audit, redaction, insights
+backend/src/lib/rag/        Copilot: documents, access scope, retrieval, chat history
+backend/scripts/            sandbox-data, plaid-sandbox-banks, seed-transactions
+frontend/src/app/           pages: / (money flow), /transactions, /untagged, /funds, /funds/[slug],
+                            /spend/[id], /sources, /audit, /settings, /copilot;
+                            public: /give/[slug], /embed/[key]
+frontend/src/components/    AppShell, console (sign-in, team, access, payees), banking, Embeds,
+                            EmbedView, RecordPayment, PayPalPayout, EntryPanel, Charts, Sankey, LedgerGrid
+frontend/public/embed.js    optional helper that fits an embed's height on the host page
+rag/                        FAISS search + OCR service (Python)
+ai/                         Render image: Ollama + rag in one container
+demo-site/                  static demo NGO website showing embeds
+docs/                       BRD, HLD, LLD, demo script, Postman collection, sample files
+scripts/prod-local.mjs      production-like Docker stack with a public HTTPS tunnel
+docker-compose.yml          the whole stack in containers
+render.yaml                 Render blueprint
 ```
 
-## Known limits (hackathon scope)
+## Troubleshooting
 
-- Username/password only. Production would add SSO and MFA.
-- JSON-file store on a single instance. Production would use Postgres, and anchor the ledger and audit-log hash heads externally.
-- No payment-request intake screen yet: `POST /api/withdrawals` accepts requests from assigned staff (with `vendorId`), but the demo relies on seeded requests.
-- Bank money is tracked per fund but isn't tied to a PayPal donor: when an admin moves leftover money at closure, unspent PayPal gifts move with it pro-rata (so donors can follow their share into the new fund) and any amount above that is untied bank money. Bank lines are USD only, and Plaid `modified`/`removed` updates aren't applied (pending lines are skipped instead).
-- Statement anonymisation is rule-based. A person's name is recognised in the payee / payer column, or in the description after a payment rail (`NEFT CR Kavya Menon …`), a role word (`beneficiary …`) or a title (`Dr. …`); a name written elsewhere in free text is not. In the payee column, a business with no telling word in its name (Ltd, Traders, Foundation…) that isn't a registered payee is treated as a person. Lines imported before this was added keep their original text, because ledger entries can't be rewritten; "Reset demo data" reseeds the demo anonymised.
-- A sample statement for the demo is in `docs/sample-bank-statement.csv`.
-- `render.yaml` deploys three services: `clearaid-api`, `clearaid-web` and a private `clearaid-ai` (Ollama plus the search/OCR service, 16 GB, model disk). The API suspends the AI service after `AI_IDLE_MINUTES` (default 20) without AI use and resumes it on the next question (needs `RENDER_API_KEY` and `RENDER_AI_SERVICE_ID` on the API; `AI_HOST` and `RAG_TOKEN` are wired by the Blueprint). The first answer after a sleep takes 1–2 minutes.
-- Public embeds are public: the key in an embed's link only keeps it from being found by guessing, so anyone who has the link (or views the page it is on) can read what it shows. "Name every payee" publishes a bank payment's own wording for payees that aren't registered, so check the preview before using it. An embed can publish one fund, several ticked funds added together, or "All funds" (which also picks up funds created later).
+| Problem | Fix |
+|---|---|
+| Windows: `An Application Control policy has blocked this file … next-swc… .node` / "Turbopack is not supported on this platform" | Windows (Smart App Control, or a company policy) is blocking the compiled helper files Next.js and Tailwind ship. On a personal PC turn off **Windows Security → App & browser control → Smart App Control**, delete `frontend/node_modules` and `frontend/.next`, and run `npm install` again. Otherwise run ClearAid in **WSL** (clone it inside the Linux home folder, not under `/mnt/c`) or with **Docker**. `next dev --webpack` won't help, because Tailwind's compiled files would be blocked too |
+| `'ollama' is not recognized` | Install the Ollama app from https://ollama.com/download (or `winget install Ollama.Ollama`), then open a new terminal. `pip install ollama` is only the Python library |
+| Copilot says **partly offline** | Start Ollama and `python rag/server.py`, and pull the models listed in [Quick start](#quick-start) |
+| `npm audit` warnings after install | Safe to ignore for local use. Don't run `npm audit fix --force`; it can upgrade packages to versions that break the app |
+| Signed out after restarting the backend | Set a fixed `SESSION_SECRET`, or keep the generated `DATA_DIR/session-secret` file |
+| "This file was already imported" | The same statement can't be imported twice; **Reset demo data** to start over |
+
+## Known limits
+
+- Username and password only. Production would add SSO and MFA.
+- JSON-file store on a single instance. Production would use Postgres and anchor the ledger and audit-log hash heads externally.
+- No screen lists payment requests that are **waiting** for signatures (`/approvals` redirects to Money flow). Paid and rejected requests open from **Transactions → Evidence →**; a pending one opens at `/spend/<id>` (IDs from `/api/withdrawals?status=pending_approval`). No intake screen for new requests either: `POST /api/withdrawals` accepts them from assigned staff, and the demo uses seeded requests.
+- The live-update stream (`/api/stream`) isn't filtered by fund access yet, so a signed-in session listening to it can receive live ledger entries of funds it can't open (see [LLD §12](docs/LLD.md#12-known-technical-gaps)).
+- Bank money is tracked per fund but isn't tied to a PayPal donor. When leftover money moves at closure, unspent PayPal gifts move with it pro-rata and anything above that is untied bank money. Bank lines are USD only, and Plaid `modified`/`removed` updates aren't applied (pending lines are skipped instead).
+- Statement anonymisation is rule-based. A person's name is recognised in the payee/payer column, or in the description after a payment rail (`NEFT CR Kavya Menon …`), a role word (`beneficiary …`) or a title (`Dr. …`); a name elsewhere in free text is not. In the payee column, a business with no telling word in its name (Ltd, Traders, Foundation…) that isn't a registered payee is treated as a person.
+- Public embeds are public: the key in an embed's link only stops it being found by guessing. "Name every payee" publishes a bank payment's own wording for payees that aren't registered, so check the preview first.
+- A sample statement for the demo is in `docs/sample-bank-statement.csv`, and sample receipts are in `docs/postman/`.
 
 ## Future scope
 
-- **Donor transparency**: let donors see where their money went and choose what to do with any leftover amount after the crisis (refund it, or carry it forward to another fund). The ledger already attributes every payout pro-rata to the donations that funded it, and donors already have a read-only login; what is missing is a screen for the choice and PayPal refunds at closure (today an admin decides where leftovers go).
-- **AI recommendations for what to publish**: an AI recommendation engine that suggests to the aid admin which data to make public for each fund (for example which embed blocks to switch on), with the admin still making the final choice.
+- **PayPal Multiparty with delayed disbursement** per NGO, so money stays with PayPal until an approved payment releases it.
+- **Approvals inbox and vendor portal**: a queue of requests waiting for your signature, and a portal where payees submit requests with their receipts and photos.
+- **AI recommendations for what to publish**: suggest which embed blocks to switch on for each fund, with the admin still deciding.
+- **Donor choice at closure**: let donors pick refund or carry-forward for their share themselves (today they opt in to a return when giving, and an admin decides where the rest goes).
+- **SSO / MFA, Postgres and external anchoring** of chain heads.
