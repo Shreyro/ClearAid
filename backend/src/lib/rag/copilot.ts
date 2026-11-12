@@ -119,10 +119,14 @@ async function ollamaChat(messages: { role: "system" | "user" | "assistant"; con
   return j.message?.content?.trim() ?? "";
 }
 
+/** Said whenever a question is outside the records or can't be answered from them. */
+export const NO_INFO = "I don't have information about that. Please contact someone from the NGO team and they can answer it for you.";
+const NO_INFO_LIKE = /NO_INFO|^(?:i|sorry,? i) (?:can't|cannot|can not|couldn't|don't|do not|am unable to) (?:find|answer|provide|help|see|have)\b[^.]*\b(?:records|information|data|that)\b|^there is no (?:information|data|record)|(?:don't|do not) have (?:any )?information|no information (?:about|on|regarding)|not allowed to|i can only answer|stick to answering|(?:can't|cannot) (?:find|help with) (?:that|this)|outside (?:of )?(?:the|my) (?:records|scope)/i;
+
 const SYSTEM = `You are ClearAid Copilot, running locally for an NGO. You answer questions about where relief money came from and where it went.
 
 Rules:
-- Answer ONLY from the FUND SUMMARIES and PASSAGES given with the question. If they don't contain the answer, say you can't find it in the records you can see. Never guess or invent amounts, dates, names or funds.
+- Answer ONLY from the FUND SUMMARIES and PASSAGES given with the question. If the question isn't about this NGO's funds and records, or they don't contain the answer, reply with exactly NO_INFO and nothing else. Never guess or invent amounts, dates, names or funds.
 - Never add up, subtract or estimate amounts yourself. Copy totals exactly from the FUND SUMMARIES (TOTAL MONEY IN, TOTAL MONEY OUT, BALANCE, by channel, by category, LARGEST SOURCES, LARGEST PAYEES). If the total you need isn't there, list the individual amounts without totalling them.
 - For "where did the money come from / go" questions, answer from the summary's channels, categories, sources and payees first, then add details from PASSAGES.
 - A category total (e.g. "Shelter $5,150") is not a payee total. Name a payee's amount only from LARGEST PAYEES or a passage; never pin a category total on one payee.
@@ -281,7 +285,11 @@ export async function askCopilot(args: { session: Session; question: string; fun
   let reply = scrub(await ask());
   if (unsupportedAmounts(reply, known).length) {
     reply = scrub(await ask("\n\n(Your last answer used amounts that are not in the data. Answer again using only amounts written above.)"));
-    if (unsupportedAmounts(reply, known).length) reply = dropUnsupported(reply, known) ?? "I can't give a reliable figure for that from the records I can see. Try naming the fund and the period.";
+    if (unsupportedAmounts(reply, known).length) reply = dropUnsupported(reply, known) ?? NO_INFO;
+  }
+
+  if (NO_INFO_LIKE.test(reply.trim()) || reply.trim() === "") {
+    return { ...base, reply: NO_INFO, sources: [], scope: { funds: funds.map((f) => ({ id: f.id, title: f.title })), narrowed } };
   }
 
   const note = leftOut.length ? `
